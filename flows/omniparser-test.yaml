@@ -1,0 +1,27 @@
+name: OmniParser Vision Test with Custom Server
+description: Test OmniParser vision fallback with remote server at 192.168.40.167:7861
+url_prefix: https://example.com
+
+vision_fallback: true
+vision_backend: omniparser
+vision_api_url: http://192.168.40.167:7861
+
+steps:
+  - step_no: 1
+    action: navigate
+    target: https://wikipedia.org
+    description: Navigate to test page
+    timeout: 10
+
+  - step_no: 2
+    action: click
+    target: "button#non-existent-element-for-omniparser-test"
+    description: Click non-existent button to trigger OmniParser vision fallback
+    vision_fallback: true
+    timeout: 15
+
+  - step_no: 3
+    action: wait
+    target: "3000"
+    description: Wait 3 seconds to observe result
+

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+artifacts/
+logs/
+test-results/
+playwright-report/
+*.log
+.DS_Store
+.env
+chrome-cdp-windows.zip
+*.zip
+coverage/
+.nyc_output/

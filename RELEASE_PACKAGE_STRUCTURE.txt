@@ -1,0 +1,10 @@
+chrome-cdp-automation/
+├── chrome-cdp.exe          # 실행 파일
+├── flows/                   # 예제 Flow 파일들
+│   ├── example-flow.yaml
+│   └── vision-fallback-example.yaml
+├── docs/                    # 문서
+│   ├── USER_GUIDE.md
+│   └── RUNBOOK.md
+├── README.md               # 설치 및 사용법
+└── LICENSE                 # 라이선스

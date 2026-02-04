@@ -1,0 +1,57 @@
+name: Nexacro App - Click 목록 Button
+description: Click the "목록" button in Nexacro web application using various selector strategies
+url_prefix: http://your-nexacro-app.com
+
+steps:
+  # Step 1: Navigate to the application page
+  - step_no: 1
+    action: navigate
+    target: http://your-nexacro-app.com/your-page.html
+    description: Navigate to Nexacro application page
+    timeout: 15
+
+  # Step 2: Wait for page to fully load (Nexacro apps need time to render)
+  - step_no: 2
+    action: wait
+    target: "3000"
+    description: Wait for Nexacro framework to fully render
+
+  # Step 3: Click 목록 button using aria-label attribute
+  # Method 1: Using aria-label (recommended for accessibility)
+  - step_no: 3
+    action: click
+    target: '[role="button"][aria-label*="목록"]'
+    description: Click 목록 button using aria-label attribute
+    timeout: 5
+
+  # Alternative Method 2: Using XPath with text content
+  # Uncomment if Method 1 doesn't work
+  # - step_no: 3
+  #   action: click
+  #   target: 'xpath=//div[@role="button" and contains(., "목록")]'
+  #   description: Click 목록 button using XPath
+  #   timeout: 5
+
+  # Alternative Method 3: Using class and text content
+  # Uncomment if above methods don't work
+  # - step_no: 3
+  #   action: click
+  #   target: 'xpath=//div[contains(@class, "btn_WF") and contains(., "목록")]'
+  #   description: Click 목록 button using class and text
+  #   timeout: 5
+
+  # Alternative Method 4: Using Vision Fallback (if selectors fail)
+  # This will capture screenshot and use OmniParser to find the button
+  # - step_no: 3
+  #   action: click
+  #   target: 'div#btnAuthRList'
+  #   description: Click 목록 button using Vision Fallback
+  #   vision_fallback: true
+  #   vision_target: "목록"
+  #   timeout: 15
+
+  # Step 4: Wait after click to observe result
+  - step_no: 4
+    action: wait
+    target: "2000"
+    description: Wait to observe the result after clicking 목록

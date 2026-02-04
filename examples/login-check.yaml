@@ -1,0 +1,84 @@
+# Login Status Check Example
+# This flow demonstrates how to verify if a user is already logged in by checking
+# for session-specific elements like user menu, logout button, or profile indicators.
+#
+# USE CASE:
+# - Automated session validation before running other flows
+# - Monitoring authentication status
+# - Ensuring user remains logged in during long-running tasks
+#
+# HOW IT WORKS:
+# 1. Navigate to a protected page
+# 2. Check for login-specific elements (user profile, logout button)
+# 3. If found, user is logged in; if not found, session has expired
+
+name: Login Status Check
+description: Validates whether the user is currently logged in by checking for session-specific UI elements
+url_prefix: https://example.com
+
+steps:
+  # Step 1: Navigate to a page that requires authentication
+  # If the user is not logged in, they will be redirected to the login page
+  # If the user is logged in, they will see the protected content
+  - step_no: 1
+    action: navigate
+    target: https://example.com/dashboard
+    description: Navigate to the dashboard (protected page)
+    timeout: 30
+
+  # Step 2: Wait for page to load
+  # Allows time for potential redirects and page rendering
+  - step_no: 2
+    action: wait
+    target: 2000
+    description: Wait 2 seconds for page to fully load
+
+  # Step 3: Check for user profile indicator (login status check)
+  # This element typically appears when user is logged in
+  # Common selectors: .user-profile, #user-menu, [data-testid="user-avatar"]
+  - step_no: 3
+    action: click
+    target: '.user-profile-avatar'
+    description: Attempt to click user profile avatar (confirms login)
+    timeout: 10
+
+  # Step 4: Wait for user menu to appear
+  # If logged in, clicking the profile should open a dropdown menu
+  - step_no: 4
+    action: wait
+    target: 1000
+    description: Wait 1 second for user menu to appear
+
+  # Step 5: Check for logout link
+  # Presence of logout button confirms active session
+  # If this selector fails, the user may have been logged out
+  - step_no: 5
+    action: click
+    target: 'a[href*="logout"], button[data-action="logout"], .logout-btn'
+    description: Click logout button (validates session)
+    timeout: 10
+
+  # Step 6: Wait for logout redirect
+  # Confirm that logout action is triggered
+  - step_no: 6
+    action: wait
+    target: 2000
+    description: Wait 2 seconds for logout redirect
+
+  # Step 7: Verify redirected to login page
+  # After logout, user should see login form or login page
+  - step_no: 7
+    action: click
+    target: 'input[type="email"], input[name="email"], #email'
+    description: Check for login email input (confirms logout)
+    timeout: 10
+
+# NOTES FOR ADAPTATION:
+# - Replace example.com with your target domain
+# - Update selectors to match your application's DOM structure
+# - Common login indicator selectors:
+#   * User profile: .user-avatar, #user-menu, .account-dropdown
+#   * Logout button: a[href*="logout"], button.logout, .sign-out
+#   * Email input: input[name="email"], input[type="email"], #email
+# - Adjust timeouts based on your application's performance
+# - This flow can be combined with other flows as a pre-flight check

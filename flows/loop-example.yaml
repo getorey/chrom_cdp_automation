@@ -1,0 +1,50 @@
+# Example Flow with Loop/Repetition
+# This flow demonstrates the repeat and continue_on_error features
+
+name: Loop Example Flow
+description: Demonstrates repeating steps and continuing on error
+url_prefix: https://example.com
+
+steps:
+  # Step 1: Navigate to example page
+  - step_no: 1
+    action: navigate
+    target: https://example.com
+    description: Navigate to example page
+    timeout: 10
+
+  # Step 2: Click button 3 times (repeat example)
+  - step_no: 2
+    action: click
+    target: "button#load-more"
+    description: Click load more button 3 times
+    repeat: 3
+    timeout: 5
+
+  # Step 3: Type text with retry on failure
+  - step_no: 3
+    action: type
+    target: "input#search"
+    value: "test query"
+    description: Type search query with 2 retries on failure
+    repeat: 2
+    continue_on_error: true
+    timeout: 5
+
+  # Step 4: Wait between operations
+  - step_no: 4
+    action: wait
+    target: "1000"
+    description: Wait 1 second
+    repeat: 2
+
+  # Step 5: Click at coordinates multiple times
+  - step_no: 5
+    action: click_at
+    target: "coordinate-click"
+    coordinates:
+      x: 500
+      y: 300
+    description: Click at coordinates 5 times
+    repeat: 5
+    timeout: 2

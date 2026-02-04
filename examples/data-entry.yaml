@@ -1,0 +1,164 @@
+# Data Entry Form Example
+# This flow demonstrates how to fill out a multi-step form with various input types.
+#
+# USE CASE:
+# - Automated form submission
+# - Data entry workflows
+# - Testing form functionality
+#
+# HOW IT WORKS:
+# 1. Navigate to the form page
+# 2. Fill in text input fields
+# 3. Select options from dropdowns
+# 4. Click through multi-step form navigation
+# 5. Submit the form
+
+name: Data Entry Form
+description: Fills out a multi-step form with various input types (text fields, dropdowns, radio buttons, checkboxes)
+url_prefix: https://example.com
+
+steps:
+  # Step 1: Navigate to the form page
+  - step_no: 1
+    action: navigate
+    target: https://example.com/form
+    description: Navigate to the multi-step form
+    timeout: 30
+
+  # Step 2: Wait for form to load
+  - step_no: 2
+    action: wait
+    target: 2000
+    description: Wait 2 seconds for form to fully load
+
+  # Step 3: Fill in the name field
+  # Type action enters text into input fields
+  - step_no: 3
+    action: type
+    target: 'input[name="name"], input#name, #full-name'
+    value: John Doe
+    description: Enter full name
+    timeout: 10
+
+  # Step 4: Fill in the email field
+  - step_no: 4
+    action: type
+    target: 'input[type="email"], input[name="email"], #email'
+    value: john.doe@example.com
+    description: Enter email address
+    timeout: 10
+
+  # Step 5: Fill in the phone number
+  - step_no: 5
+    action: type
+    target: 'input[type="tel"], input[name="phone"], #phone'
+    value: 555-123-4567
+    description: Enter phone number
+    timeout: 10
+
+  # Step 6: Fill in the address field
+  - step_no: 6
+    action: type
+    target: 'textarea[name="address"], textarea#address, #street-address'
+    value: 123 Main Street, Suite 100
+    description: Enter street address
+    timeout: 10
+
+  # Step 7: Select country from dropdown
+  # Select action chooses an option from a <select> element
+  # The value must match the option's value attribute
+  - step_no: 7
+    action: select
+    target: 'select[name="country"], select#country, #country-select'
+    value: US
+    description: Select United States from country dropdown
+    timeout: 10
+
+  # Step 8: Select state/province from dropdown
+  - step_no: 8
+    action: select
+    target: 'select[name="state"], select#state, #state-select'
+    value: CA
+    description: Select California from state dropdown
+    timeout: 10
+
+  # Step 9: Fill in ZIP code
+  - step_no: 9
+    action: type
+    target: 'input[name="zip"], input[name="postal"], #zip-code'
+    value: 90210
+    description: Enter ZIP/postal code
+    timeout: 10
+
+  # Step 10: Click the "Next" button to proceed to step 2
+  # Multi-step forms often use navigation buttons
+  - step_no: 10
+    action: click
+    target: 'button[type="submit"].next, button.next-step, #step1-next, [data-step="2"]'
+    description: Click Next button to proceed to form step 2
+    timeout: 10
+
+  # Step 11: Wait for second step to load
+  - step_no: 11
+    action: wait
+    target: 2000
+    description: Wait 2 seconds for form step 2 to load
+
+  # Step 12: Select a radio button option
+  # Radio buttons can be clicked directly
+  - step_no: 12
+    action: click
+    target: 'input[type="radio"][value="premium"], #option-premium, [data-plan="premium"]'
+    description: Select Premium plan option
+    timeout: 10
+
+  # Step 13: Check a checkbox option
+  - step_no: 13
+    action: click
+    target: 'input[type="checkbox"][name="terms"], #terms-checkbox, [data-terms]'
+    description: Check the terms and conditions checkbox
+    timeout: 10
+
+  # Step 14: Fill in additional notes text area
+  - step_no: 14
+    action: type
+    target: 'textarea[name="notes"], textarea#notes, #additional-notes'
+    value: Please send updates via email
+    description: Enter additional notes
+    timeout: 10
+
+  # Step 15: Click the "Submit" button to complete the form
+  - step_no: 15
+    action: click
+    target: 'button[type="submit"], button.submit, #form-submit, [data-action="submit"]'
+    description: Click Submit button to complete the form
+    timeout: 10
+
+  # Step 16: Wait for confirmation page
+  - step_no: 16
+    action: wait
+    target: 3000
+    description: Wait 3 seconds for confirmation page to load
+
+  # Step 17: Verify success message appears
+  - step_no: 17
+    action: click
+    target: '.success-message, .confirmation, .alert-success, #form-complete'
+    description: Click on success message element to verify submission
+    timeout: 10
+
+# NOTES FOR ADAPTATION:
+# - Replace example.com with your target domain
+# - Update selectors to match your form's HTML structure
+# - Common form field selectors:
+#   * Text input: input[type="text"], input[name="field"], #field-id
+#   * Email input: input[type="email"], input[name="email"]
+#   * Phone input: input[type="tel"], input[name="phone"]
+#   * Textarea: textarea[name="field"], textarea#field-id
+#   * Select dropdown: select[name="field"], select#field-id
+#   * Radio button: input[type="radio"][value="option"]
+#   * Checkbox: input[type="checkbox"][name="field"]
+# - The value field in select actions must match the option's value attribute
+# - Multi-step forms often have navigation buttons (Next, Previous, Submit)
+# - Adjust wait times based on your form's loading speed
+# - Add validation checks after each step if needed

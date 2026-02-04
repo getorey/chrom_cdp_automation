@@ -1,0 +1,59 @@
+name: Template Matching with Base64 Example
+description: Example showing template matching with inline base64 images and YAML references
+url_prefix: http://your-nexacro-app.com
+
+# Define reusable templates using YAML anchors (&)
+templates:
+  list_button: &list_button_template
+    iVBORw0KGgoAAAANSUhEUgAAABQAAAAcCAYAAABG2khxAAAACXBIWXMAABYlAAAWJQFJ
+    Utw4AAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAABhJREFUSInt
+    wTEBAGAEBBDQ//8U+00MWEBzCwcW0HwpDAAAAABJRU5ErkJggg==
+  
+  save_button: &save_button_template
+    iVBORw0KGgoAAAANSUhEUgAAABQAAAAcCAYAAABG2khxAAAACXBIWXMAABYlAAAWJQFJ
+    Utw4AAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAABhJREFUSInt
+    wTEBAGAEBBDQ//8U+00MWEBzCwcW0HwpDAAAAABJRU5ErkJggg==
+
+steps:
+  - step_no: 1
+    action: navigate
+    target: http://your-nexacro-app.com/your-page.html
+    description: Navigate to Nexacro application
+    timeout: 15
+
+  - step_no: 2
+    action: wait
+    target: "3000"
+    description: Wait for Nexacro framework to render
+
+  # Method 1: Direct inline base64 (short example - truncated)
+  - step_no: 3
+    action: click_template
+    target: "button"
+    template_data: "iVBORw0KGgoAAAANSUhEUgAAABQAAAAcCAYAAABG2khxAAAACXBIWXMAABYlAAAWJQFJUtw4AAAAGXRFWHRTb2Z0d2FyZQB3d3cuaW5rc2NhcGUub3Jnm+48GgAAABhJREFUSIntwTEBAGAEBBDQ//8U+00MWEBzCwcW0HwpDAAAAABJRU5ErkJggg=="
+    template_threshold: 0.8
+    description: Click using inline base64 (replace with real image)
+    timeout: 10
+
+  # Method 2: Using YAML alias (*) to reference anchored template
+  - step_no: 4
+    action: click_template
+    target: "button"
+    template_data: *list_button_template
+    template_threshold: 0.8
+    description: Click using YAML reference (cleaner, reusable)
+    timeout: 10
+
+  # Method 3: Reuse same template in multiple steps
+  - step_no: 5
+    action: click_template
+    target: "button"
+    template_data: *list_button_template
+    template_threshold: 0.85
+    description: Click same button again with different threshold
+    timeout: 10
+
+  - step_no: 6
+    action: wait
+    target: "2000"
+    description: Wait to observe results

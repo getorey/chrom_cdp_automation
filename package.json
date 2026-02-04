@@ -1,0 +1,64 @@
+{
+  "name": "chrome-cdp-automation",
+  "version": "1.0.0",
+  "description": "Chrome DevTools Protocol automation runner with YAML flow definitions",
+  "main": "dist/cli.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "playwright test",
+    "test:unit": "playwright test --project=unit",
+    "test:integration": "playwright test --project=integration",
+    "start": "node dist/cli.js",
+    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=dist/bundle.js --format=cjs --external:sharp --external:playwright --external:@playwright/test",
+    "pkg": "npm run bundle && pkg dist/bundle.js --compress GZip --targets node18-win-x64 --output dist/chrome-cdp.exe",
+    "pkg:all": "npm run bundle && pkg dist/bundle.js --compress GZip --targets node18-win-x64,node18-macos-x64,node18-linux-x64 --output dist/chrome-cdp"
+  },
+  "bin": {
+    "chrome-cdp": "dist/bundle.js"
+  },
+  "pkg": {
+    "scripts": [
+      "dist/bundle.js"
+    ],
+    "assets": [
+      "config.json",
+      "flows/**/*",
+      "docs/**/*",
+      "templates/**/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ],
+    "output": "dist/chrome-cdp.exe"
+  },
+  "keywords": [
+    "automation",
+    "chrome",
+    "cdp",
+    "devtools",
+    "playwright"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@playwright/test": "^1.48.0",
+    "@techstark/opencv-js": "^4.12.0-release.1",
+    "@types/cron": "^2.0.1",
+    "ajv": "^8.12.0",
+    "commander": "^12.0.0",
+    "cron": "^4.4.0",
+    "js-yaml": "^4.1.0",
+    "node-cron": "^3.0.3",
+    "playwright": "^1.48.0",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "^20.10.0",
+    "@types/node-cron": "^3.0.11",
+    "esbuild": "^0.27.2",
+    "typescript": "^5.3.0"
+  }
+}

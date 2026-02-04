@@ -1,0 +1,144 @@
+# Report Download Example
+# This flow demonstrates how to generate and download a report from a web application.
+#
+# USE CASE:
+# - Automated report generation
+# - Scheduled data exports
+# - Backup automation
+# - Analytics data collection
+#
+# HOW IT WORKS:
+# 1. Navigate to the reports section
+# 2. Configure report parameters (date range, format, filters)
+# 3. Trigger report generation
+# 4. Wait for report to be ready
+# 5. Download the report file
+
+name: Report Download
+description: Generates and downloads a report by navigating to reports page, configuring parameters, and triggering download
+url_prefix: https://example.com
+
+steps:
+  # Step 1: Navigate to the reports section
+  - step_no: 1
+    action: navigate
+    target: https://example.com/reports
+    description: Navigate to the reports dashboard
+    timeout: 30
+
+  # Step 2: Wait for reports page to load
+  - step_no: 2
+    action: wait
+    target: 2000
+    description: Wait 2 seconds for reports page to fully load
+
+  # Step 3: Click on the report type selector
+  - step_no: 3
+    action: click
+    target: 'select[name="report-type"], select#reportType, #report-dropdown'
+    description: Click report type dropdown selector
+    timeout: 10
+
+  # Step 4: Select the report type (e.g., Sales Report)
+  - step_no: 4
+    action: select
+    target: 'select[name="report-type"], select#reportType'
+    value: sales-report
+    description: Select Sales Report from the dropdown
+    timeout: 10
+
+  # Step 5: Set start date for the report
+  - step_no: 5
+    action: type
+    target: 'input[name="start-date"], input#startDate, .date-picker-start'
+    value: 2024-01-01
+    description: Enter start date for the report period
+    timeout: 10
+
+  # Step 6: Set end date for the report
+  - step_no: 6
+    action: type
+    target: 'input[name="end-date"], input#endDate, .date-picker-end'
+    value: 2024-01-31
+    description: Enter end date for the report period
+    timeout: 10
+
+  # Step 7: Select report format (CSV, PDF, Excel)
+  - step_no: 7
+    action: select
+    target: 'select[name="format"], select#reportFormat, #format-dropdown'
+    value: csv
+    description: Select CSV format for the report
+    timeout: 10
+
+  # Step 8: Apply additional filters if needed
+  - step_no: 8
+    action: click
+    target: 'input[type="checkbox"][value="include-details"], #include-details, [data-filter="details"]'
+    description: Check include details checkbox
+    timeout: 10
+
+  # Step 9: Click the Generate Report button
+  - step_no: 9
+    action: click
+    target: 'button.generate-report, button[type="submit"], #generateBtn, [data-action="generate"]'
+    description: Click Generate Report button to create the report
+    timeout: 10
+
+  # Step 10: Wait for report generation to complete
+  # This wait time depends on report complexity and data volume
+  - step_no: 10
+    action: wait
+    target: 5000
+    description: Wait 5 seconds for report generation to complete
+
+  # Step 11: Wait for download button to appear (report ready)
+  - step_no: 11
+    action: wait
+    target: 2000
+    description: Wait 2 seconds for download button to appear
+
+  # Step 12: Click the Download button
+  - step_no: 12
+    action: click
+    target: 'button.download, a.download-btn, #downloadBtn, [data-action="download"], .download-link'
+    description: Click Download button to download the report file
+    timeout: 10
+
+  # Step 13: Wait for download to complete
+  - step_no: 13
+    action: wait
+    target: 3000
+    description: Wait 3 seconds for download to complete
+
+  # Step 14: Verify download indicator appears
+  - step_no: 14
+    action: click
+    target: '.download-success, .download-complete, .download-indicator, #download-status'
+    description: Click on download success indicator to verify completion
+    timeout: 10
+
+  # Step 15: Navigate back to reports list
+  - step_no: 15
+    action: click
+    target: 'a[href="/reports"], .back-to-reports, #reports-link, [data-nav="reports"]'
+    description: Navigate back to reports list
+    timeout: 10
+
+# NOTES FOR ADAPTATION:
+# - Replace example.com with your target domain
+# - Update selectors to match your application's DOM structure
+# - Common report-related selectors:
+#   * Report dropdown: select[name="report-type"], select#reportType, #report-select
+#   * Date inputs: input[name="start-date"], input[name="end-date"], .date-picker
+#   * Format selector: select[name="format"], select#format, #format-select
+#   * Generate button: button.generate, button[type="submit"], #generateBtn
+#   * Download button: button.download, a.download, #downloadBtn
+#   * Success indicator: .success-message, .download-complete
+# - Date format varies by application (YYYY-MM-DD, MM/DD/YYYY, etc.)
+# - Report formats often include: csv, pdf, xlsx, json
+# - Wait times depend on report complexity and data volume
+# - Some applications use async report generation with polling
+# - Download may trigger browser's download manager
+# - Consider adding retry logic for large reports
+# - For scheduled automation, pair with the scheduler feature

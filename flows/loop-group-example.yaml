@@ -1,0 +1,85 @@
+# Example Flow with Step Group Loop
+# This flow demonstrates looping a group of steps multiple times
+
+name: Step Group Loop Example
+description: Demonstrates looping multiple steps as a group
+url_prefix: https://example.com
+
+steps:
+  # Step 1: Navigate to example page
+  - step_no: 1
+    action: navigate
+    target: https://example.com
+    description: Navigate to example page
+    timeout: 10
+
+  # Step 2: Loop a group of steps 3 times
+  # This will execute all loop_steps 3 times in sequence
+  - step_no: 2
+    action: loop
+    target: "loop-container"
+    description: Load more items 3 times (click + wait)
+    repeat: 3
+    loop_steps:
+      - action: click
+        target: "button#load-more"
+        description: Click load more button
+        timeout: 5
+      
+      - action: wait
+        target: "1000"
+        description: Wait 1 second for items to load
+
+  # Step 3: Process items with error handling
+  # If one iteration fails, continue to next (continue_on_error: true)
+  - step_no: 3
+    action: loop
+    target: "process-items"
+    description: Process each item with retry on error
+    repeat: 5
+    continue_on_error: true
+    loop_steps:
+      - action: click
+        target: ".item-button"
+        description: Click item
+        timeout: 3
+      
+      - action: type
+        target: "input.item-input"
+        value: "processed"
+        description: Type processed status
+        timeout: 3
+
+  # Step 4: Complex nested operations
+  - step_no: 4
+    action: loop
+    target: "complex-operations"
+    description: Perform complex operations 2 times
+    repeat: 2
+    loop_steps:
+      - action: click_at
+        target: "coord-1"
+        coordinates:
+          x: 100
+          y: 200
+        description: Click first position
+        timeout: 2
+      
+      - action: click_at
+        target: "coord-2"
+        coordinates:
+          x: 300
+          y: 400
+        description: Click second position
+        timeout: 2
+      
+      - action: wait
+        target: "500"
+        description: Short pause
+
+  # Step 5: Single step outside loop
+  - step_no: 5
+    action: navigate
+    target: https://example.com/finish
+    description: Navigate to finish page
+    timeout: 10
