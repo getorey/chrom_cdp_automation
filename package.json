@@ -10,9 +10,16 @@
     "test:unit": "playwright test --project=unit",
     "test:integration": "playwright test --project=integration",
     "start": "node dist/cli.js",
-    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=dist/bundle.js --format=cjs --external:sharp --external:playwright --external:@playwright/test",
+    "build-standalone": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=dist/bundle-standalone.js --format=cjs --external:playwright --external:@playwright/test",
+    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node18 --outfile=dist/bundle.js --format=cjs --external:sharp --external:playwright --external:@playwright/test --external:@techstark/opencv-js --external:cron --external:node-cron",
     "pkg": "npm run bundle && pkg dist/bundle.js --compress GZip --targets node18-win-x64 --output dist/chrome-cdp.exe",
-    "pkg:all": "npm run bundle && pkg dist/bundle.js --compress GZip --targets node18-win-x64,node18-macos-x64,node18-linux-x64 --output dist/chrome-cdp"
+    "pkg:standalone": "npm run build-standalone && pkg dist/bundle-standalone.js --compress GZip --targets node18-win-x64 --output dist/chrome-cdp-standalone.exe",
+    "pkg:all": "npm run bundle && pkg dist/bundle.js --compress GZip --targets node18-win-x64,node18-macos-x64,node18-linux-x64 --output dist/chrome-cdp",
+    "package": "node scripts/package-dist-improved.cjs",
+    "package:v2": "node scripts/package-v2-external.cjs",
+    "build-and-package": "npm run pkg && npm run package",
+    "build-and-package:v2": "npm run pkg:v2 && npm run package:v2",
+    "clean": "rm -rf release/ dist/*.exe *.zip"
   },
   "bin": {
     "chrome-cdp": "dist/bundle.js"
@@ -51,6 +58,7 @@
     "js-yaml": "^4.1.0",
     "node-cron": "^3.0.3",
     "playwright": "^1.48.0",
+    "pngjs": "^7.0.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {
@@ -58,6 +66,8 @@
     "@types/json-schema": "^7.0.15",
     "@types/node": "^20.10.0",
     "@types/node-cron": "^3.0.11",
+    "@types/pngjs": "^6.0.5",
+    "archiver": "^7.0.1",
     "esbuild": "^0.27.2",
     "typescript": "^5.3.0"
   }

@@ -1,0 +1,25 @@
+name: OpenAI Vision Test
+description: Test OpenAI-compatible vision API (vLLM, VARCO-VISION, etc.) for text-based element detection
+url_prefix: https://wikipedia.org
+
+vision_fallback: true
+vision_backend: openai
+vision_api_url: http://localhost:3000
+vision_model_name: NCSOFT/VARCO-VISION-2.0-1.7B-OCR
+vision_max_tokens: 1024
+# vision_api_key: optional-api-key-if-required
+
+steps:
+  - step_no: 1
+    action: navigate
+    target: https://wikipedia.org
+    description: Navigate to Wikipedia for OCR testing
+    timeout: 10
+
+  - step_no: 2
+    action: click
+    target: "a#non-existent-link-for-openai-test"
+    description: Click non-existent link to trigger OpenAI Vision fallback
+    vision_fallback: true
+    vision_target: "한국어"
+    timeout: 200000

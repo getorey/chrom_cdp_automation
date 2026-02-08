@@ -34,9 +34,12 @@ export interface Flow {
   description: string;
   url_prefix: string;
   vision_fallback?: boolean;
-  vision_backend?: 'som' | 'omniparser';
+  vision_backend?: 'som' | 'omniparser' | 'openai';
   vision_api_url?: string;
   vision_ocr_language?: string;
+  vision_model_name?: string;
+  vision_max_tokens?: number;
+  vision_api_key?: string;
   steps: Step[];
 }
 

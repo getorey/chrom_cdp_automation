@@ -4,13 +4,18 @@ import { Step, ActionType, Flow } from '../models/flow.js';
 import { VisionBackend, VisionFallbackError, VisionFallbackErrorType, captureScreenshotForVision, convertVisionToPageCoordinates, executeActionAtCoordinates } from './vision-fallback.js';
 import { SoMBackend } from './vision-som-backend.js';
 import { OmniParserBackend } from './vision-omniparser-backend.js';
-import { findTemplate, loadTemplateImage, loadTemplateFromBase64 } from './template-matcher.js';
+import { OpenAIVisionBackend } from './vision-openai-backend.js';
+import { findTemplate, loadTemplateImage, loadTemplateFromBase64 } from './template-matcher-no-sharp.js';
+import { PNG } from 'pngjs';
 
 export class StepHandler {
   private visionBackend: VisionBackend | undefined;
   private globalVisionFallbackEnabled = false;
-  private globalVisionBackendType: 'som' | 'omniparser' = 'som';
+  private globalVisionBackendType: 'som' | 'omniparser' | 'openai' = 'som';
   private visionApiUrl: string | undefined;
+  private visionModelName: string | undefined;
+  private visionMaxTokens: number | undefined;
+  private visionApiKey: string | undefined;
   private page: Page | null = null;
 
   constructor(
@@ -20,6 +25,9 @@ export class StepHandler {
     this.globalVisionFallbackEnabled = flow.vision_fallback ?? false;
     this.globalVisionBackendType = flow.vision_backend ?? 'som';
     this.visionApiUrl = flow.vision_api_url;
+    this.visionModelName = flow.vision_model_name;
+    this.visionMaxTokens = flow.vision_max_tokens;
+    this.visionApiKey = flow.vision_api_key;
   }
 
   private async initializeVisionBackend(): Promise<void> {
@@ -32,6 +40,12 @@ export class StepHandler {
         this.visionBackend = new SoMBackend(this.visionApiUrl);
       } else if (this.globalVisionBackendType === 'omniparser') {
         this.visionBackend = new OmniParserBackend(this.visionApiUrl);
+      } else if (this.globalVisionBackendType === 'openai') {
+        const backend = new OpenAIVisionBackend(this.visionApiUrl, this.visionModelName, this.visionApiKey);
+        if (this.visionMaxTokens) {
+          backend.setMaxTokens(this.visionMaxTokens);
+        }
+        this.visionBackend = backend;
       } else {
         throw new Error(`Unknown vision backend type: ${this.globalVisionBackendType}`);
       }
@@ -93,15 +107,23 @@ export class StepHandler {
         };
       }
 
-      const viewport = page.viewportSize() || { width: 1920, height: 1080 };
+      // Get actual viewport size from the page context
+      const actualViewport = await page.evaluate<{ width: number; height: number }>('({ width: window.innerWidth, height: window.innerHeight })');
+
+      // Parse screenshot to get actual dimensions
+      const png = PNG.sync.read(screenshot);
+      const screenshotWidth = png.width;
+      const screenshotHeight = png.height;
 
       const coordinates = convertVisionToPageCoordinates(
         visionResult.result.bbox,
-        Math.sqrt(screenshot.length),
-        Math.sqrt(screenshot.length),
-        viewport.width,
-        viewport.height
+        screenshotWidth,
+        screenshotHeight,
+        actualViewport.width,
+        actualViewport.height
       );
+
+      console.log(`[Vision Fallback] Clicking at calculated coordinates: (${coordinates.x}, ${coordinates.y}) (Vision bbox: ${JSON.stringify(visionResult.result.bbox)})`);
 
       await executeActionAtCoordinates(page, step.action, coordinates, step.value);
 
@@ -207,7 +229,13 @@ export class StepHandler {
           throw new Error(`Template not found on screen: ${templateSource} (threshold: ${threshold})`);
         }
         
+        console.log(`[TemplateMatcher] Clicking at coordinates: (${matchResult.x}, ${matchResult.y})`);
+        
+        // Ensure the page is focused and handle potential overlay issues by forcing the click
         await page.mouse.click(matchResult.x, matchResult.y);
+        
+        // Optional: wait a bit after click
+        await page.waitForTimeout(500);
         break;
       }
       case ActionType.press:
