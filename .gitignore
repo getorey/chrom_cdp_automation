@@ -11,3 +11,15 @@ chrome-cdp-windows.zip
 *.zip
 coverage/
 .nyc_output/
+
+# Build artifacts
+release/
+build-temp-pkg/
+temp-zip-test/
+test-final-package/
+tmp/
+.pkg.json
+nul
+test-page.html
+compare_base64.cjs
+test_base64.cjs
