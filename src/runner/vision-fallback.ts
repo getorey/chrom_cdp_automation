@@ -34,6 +34,7 @@ export interface VisionExecutionResult {
 export enum VisionBackendType {
   SoM = 'som',
   OmniParser = 'omniparser',
+  OpenAI = 'openai',
 }
 
 export interface VisionBackend {

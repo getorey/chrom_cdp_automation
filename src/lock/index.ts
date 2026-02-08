@@ -1,17 +1,21 @@
-import { writeFile, unlink, readFile } from 'fs/promises';
+import { writeFile, unlink, readFile, mkdir } from 'fs/promises';
+import { dirname } from 'path';
 import { LockFile } from '../models/flow';
 
 console.warn = (...args: unknown[]) => {
   console.error('[WARN]', ...args);
 };
 
-export const LOCK_FILE_PATH = '/tmp/automation.lock';
+export const LOCK_FILE_PATH = './tmp/automation.lock';
 const LOCK_TIMEOUT_MS = 5 * 60 * 1000;
 
 export async function acquireLock(flowFile: string): Promise<boolean> {
   const now = Date.now();
 
   try {
+    // Ensure tmp directory exists
+    await mkdir(dirname(LOCK_FILE_PATH), { recursive: true });
+
     let existingLockContent: string;
     try {
       existingLockContent = await readFile(LOCK_FILE_PATH, 'utf-8');

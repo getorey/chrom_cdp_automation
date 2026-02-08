@@ -1,13 +1,13 @@
 name: Nexacro App - Template Matching Test
 description: Click 목록 button using template matching
-url_prefix: http://your-nexacro-app.com
+url_prefix: https://example.com
 
 steps:
   # Step 1: Navigate to the application page
   - step_no: 1
     action: navigate
-    target: http://your-nexacro-app.com/your-page.html
-    description: Navigate to Nexacro application page
+    target: https://example.com
+    description: Navigate to example.com for testing
     timeout: 15
 
   # Step 2: Wait for page to fully load (Nexacro apps need time to render)
@@ -16,19 +16,18 @@ steps:
     target: "3000"
     description: Wait for Nexacro framework to fully render
 
-  # Step 3: Click 목록 button using template matching
-  # This uses image-based template matching with normalized cross-correlation
-  # First capture a screenshot of the "목록" button and save as templates/list-button.png
+  # Step 3: Click at coordinates to test coordinate clicking (instead of screenshot)
   - step_no: 3
-    action: click_template
-    target: "button"  # Target is required but not used for click_template
-    template_path: "templates/list-button.png"
-    template_threshold: 0.8
-    description: Click 목록 button using template matching (image-based)
-    timeout: 10
+    action: click_at
+    target: "coordinate-test"
+    coordinates:
+      x: 100
+      y: 100
+    description: Click at coordinates (100, 100) to test click_at functionality
+    timeout: 5
 
   # Step 4: Wait after click to observe result
   - step_no: 4
     action: wait
     target: "2000"
-    description: Wait to observe the result after clicking 목록
+    description: Wait to observe the result after clicking at coordinates

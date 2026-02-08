@@ -28,6 +28,18 @@ chrome-cdp.exe --help
 1. Chrome must be running with CDP mode:
    ```cmd
    "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222
+
+
+
+
+   & "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+  --remote-debugging-port=9222 `
+  --user-data-dir="C:\temp\chrome-debug-$(Get-Date -Format yyyyMMdd-HHmmss)" `
+  --no-first-run `
+  --no-default-browser-check `
+  --disable-default-apps
+
+  
    ```
 
 2. See [Windows Installation Guide](docs/WINDOWS_INSTALL.md) for detailed instructions.
