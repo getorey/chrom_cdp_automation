@@ -30,8 +30,14 @@ export class StepHandler {
     this.visionApiKey = flow.vision_api_key;
   }
 
-  private async initializeVisionBackend(): Promise<void> {
-    if (!this.globalVisionFallbackEnabled) {
+  private async initializeVisionBackend(step?: Step): Promise<void> {
+    const shouldInitialize = (step?.vision_fallback) ?? this.globalVisionFallbackEnabled;
+    
+    if (!shouldInitialize) {
+      return;
+    }
+
+    if (this.visionBackend) {
       return;
     }
 
@@ -51,6 +57,7 @@ export class StepHandler {
       }
 
       await this.visionBackend.initialize();
+      console.log(`[Vision Backend] Initialized ${this.globalVisionBackendType} backend`);
     } catch (error) {
       console.warn(`Vision backend initialization failed: ${error instanceof Error ? error.message : String(error)}`);
       this.visionBackend = undefined;
@@ -143,8 +150,8 @@ export class StepHandler {
         visionResult.result.bbox,
         screenshotWidth,
         screenshotHeight,
-        actualViewport.width,
-        actualViewport.height,
+        clip ? clip.width : actualViewport.width,
+        clip ? clip.height : actualViewport.height,
         cropOffset
       );
 
@@ -171,7 +178,7 @@ export class StepHandler {
   }
 
   async execute(step: Step, cdpConnector: CDPConnector): Promise<{ success: boolean; usedVision: boolean; visionConfidence?: number; visionError?: string }> {
-    await this.initializeVisionBackend();
+    await this.initializeVisionBackend(step);
     this.page = cdpConnector.getPage();
 
     const page = this.page;

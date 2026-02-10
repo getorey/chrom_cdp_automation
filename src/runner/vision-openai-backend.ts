@@ -19,22 +19,37 @@ interface ParsedVisionResult {
 
 export class OpenAIVisionBackend implements VisionBackend {
   readonly type = VisionBackendType.OpenAI;
-  private initialized = false;
+  //private initialized = false;
   private apiUrl: string;
   private modelName: string;
   private confidenceThreshold = 0.5;
-  private maxTokens = 256;
+  private maxTokens = 4096;
   private temperature = 0.1; // Low temperature for deterministic OCR results
   private apiKey: string | undefined;
 
   constructor(
-    apiUrl: string = 'http://localhost:3000',
+    apiUrl: string = 'http://localhost:3000/v1',
     modelName: string = 'NCSOFT/VARCO-VISION-2.0-1.7B-OCR',
     apiKey?: string
   ) {
-    this.apiUrl = apiUrl.replace(/\/$/, '');
+    // Ensure localhost is replaced with 127.0.0.1 to avoid Node.js IPv6 issues
+    this.apiUrl = apiUrl.replace(/\/$/, '').replace('localhost', '127.0.0.1');
     this.modelName = modelName;
     this.apiKey = apiKey;
+  }
+
+  private getModelsUrl(): string {
+    if (this.apiUrl.endsWith('/v1')) {
+      return `${this.apiUrl}/models`;
+    }
+    return `${this.apiUrl}/v1/models`;
+  }
+
+  private getChatCompletionUrl(): string {
+    if (this.apiUrl.endsWith('/v1')) {
+      return `${this.apiUrl}/chat/completions`;
+    }
+    return `${this.apiUrl}/v1/chat/completions`;
   }
 
   async isAvailable(): Promise<boolean> {
@@ -44,37 +59,41 @@ export class OpenAIVisionBackend implements VisionBackend {
         headers['Authorization'] = `Bearer ${this.apiKey}`;
       }
       
-      const response = await fetch(`${this.apiUrl}/v1/models`, {
+      const modelsUrl = this.getModelsUrl();
+      console.log(`[OpenAI Vision] Checking availability at: ${modelsUrl}`);
+      const response = await fetch(modelsUrl, {
         method: 'GET',
         headers,
       });
+      console.log(`[OpenAI Vision] Availability check response: ${response.status} ${response.statusText}`);
       return response.ok;
-    } catch {
+    } catch (error) {
+      console.error(`[OpenAI Vision] isAvailable check failed: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   }
 
   async initialize(): Promise<void> {
-    if (await this.isAvailable()) {
-      this.initialized = true;
-    } else {
-      throw new VisionFallbackError(
-        VisionFallbackErrorType.BackendNotAvailable,
-        `OpenAI Vision backend not available at ${this.apiUrl}. Please ensure that the OpenAI-compatible server is running.`
-      );
-    }
+    //if (await this.isAvailable()) {
+    //  this.initialized = true;
+    //} else {
+    //  throw new VisionFallbackError(
+    //    VisionFallbackErrorType.BackendNotAvailable,
+    //    `OpenAI Vision backend not available at ${this.apiUrl}. Please ensure that the OpenAI-compatible server is running.`
+    //  );
+    //}
   }
 
   async detectElements(
     screenshotBuffer: Buffer,
     options: VisionDetectionOptions
   ): Promise<VisionExecutionResult[]> {
-    if (!this.initialized) {
-      throw new VisionFallbackError(
-        VisionFallbackErrorType.InitializationFailed,
-        'OpenAI Vision backend not initialized. Call initialize() first.'
-      );
-    }
+    //if (!this.initialized) {
+    //  throw new VisionFallbackError(
+    //    VisionFallbackErrorType.InitializationFailed,
+    //    'OpenAI Vision backend not initialized. Call initialize() first.'
+    //  );
+    //}
 
     const base64Image = screenshotBuffer.toString('base64');
     const startTime = Date.now();
@@ -94,12 +113,15 @@ export class OpenAIVisionBackend implements VisionBackend {
     fs.writeFileSync(screenshotPath, screenshotBuffer);
 
     console.log('\n🔍 [OpenAI Vision] Starting element detection...');
-    console.log(`   Image size: ${imgWidth}x${imgHeight}`);
+    const sizeKB = (screenshotBuffer.length / 1024).toFixed(2);
+    console.log(`   Image Resolution: ${imgWidth} x ${imgHeight} px`);
+    console.log(`   Image Size:       ${sizeKB} KB`);
+    console.log(`   Aspect Ratio:     ${(imgWidth / imgHeight).toFixed(2)}`);
     console.log(`   Screenshot saved: ${screenshotPath}`);
     console.log(`   API URL: ${this.apiUrl}`);
     console.log(`   Model: ${this.modelName}`);
     console.log(`   Target: ${options.target || 'N/A'}`);
-    console.log(`   Prompt: ${options.prompt}`);
+    //console.log(`   Prompt: ${options.prompt}`);
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -114,8 +136,8 @@ export class OpenAIVisionBackend implements VisionBackend {
             role: 'user',
             content: [
               {
-                type: 'text',
-                text: `<ocr>${options.prompt}${options.target ? ` Find element containing text: "${options.target}"` : ''}`
+                "type": "text",
+                "text": "<ocr>"
               },
               {
                 type: 'image_url',
@@ -131,13 +153,42 @@ export class OpenAIVisionBackend implements VisionBackend {
 
       };
 
-      console.log(`\n📤 [OpenAI Vision] Sending POST request to: ${this.apiUrl}/v1/chat/completions`);
+      const chatUrl = this.getChatCompletionUrl();
+      console.log(`\n📤 [OpenAI Vision] Sending POST request to: ${chatUrl}`);
+      //console.log(`\n📋 [OpenAI Vision] Request Headers:`, JSON.stringify(headers, null, 2));
+      //console.log(`\n📋 [OpenAI Vision] Request Body:`, JSON.stringify(requestBody, null, 2));
 
-      const response = await fetch(`${this.apiUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody),
-      });
+      console.log(`\n⏳ [OpenAI Vision] Sending request with 120s timeout...`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+      
+      let response: Response;
+      try {
+        response = await fetch(chatUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
+        console.error(`\n❌ [OpenAI Vision] Fetch error: ${errorMsg}`);
+        
+        if (errorMsg.includes('ECONNREFUSED')) {
+          throw new VisionFallbackError(
+            VisionFallbackErrorType.BackendNotAvailable,
+            `Cannot connect to server at ${chatUrl}. Is the VARCO-VISION server running on localhost:3000?`
+          );
+        }
+        
+        throw new VisionFallbackError(
+          VisionFallbackErrorType.DetectionFailed,
+          `Network error: ${errorMsg}`
+        );
+      }
 
       console.log(`\n📥 [OpenAI Vision] Response status: ${response.status}`);
 
