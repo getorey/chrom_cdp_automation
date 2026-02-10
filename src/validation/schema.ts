@@ -54,6 +54,24 @@ const stepSchema = {
       type: 'boolean',
       description: 'Override global vision_fallback for this step (optional)',
     },
+    vision_target: {
+      type: 'string',
+      description: 'Target text to search for when using vision fallback (optional)',
+    },
+    vision_ocr_language: {
+      type: 'string',
+      description: 'OCR language for vision fallback (e.g., "korean", "english", "chinese") (optional)',
+    },
+    vision_crop: {
+      type: 'object',
+      description: 'Crop area for vision detection (0-100%)',
+      properties: {
+        left: { type: 'number', minimum: 0, maximum: 100 },
+        top: { type: 'number', minimum: 0, maximum: 100 },
+        right: { type: 'number', minimum: 0, maximum: 100 },
+        bottom: { type: 'number', minimum: 0, maximum: 100 },
+      },
+    },
     repeat: {
       type: 'number',
       minimum: 1,
@@ -122,15 +140,25 @@ const stepSchema = {
             type: 'string',
             description: 'Target text to search for when using vision fallback (optional)',
           },
-          vision_ocr_language: {
-            type: 'string',
-            description: 'OCR language for vision fallback (e.g., "korean", "english", "chinese") (optional)',
-          },
-          repeat: {
-            type: 'number',
-            minimum: 1,
-            description: 'Number of times to repeat this step (optional, default: 1)',
-          },
+    vision_ocr_language: {
+      type: 'string',
+      description: 'OCR language for vision fallback (e.g., "korean", "english", "chinese") (optional)',
+    },
+    vision_crop: {
+      type: 'object',
+      description: 'Crop area for vision detection (0-100%)',
+      properties: {
+        left: { type: 'number', minimum: 0, maximum: 100 },
+        top: { type: 'number', minimum: 0, maximum: 100 },
+        right: { type: 'number', minimum: 0, maximum: 100 },
+        bottom: { type: 'number', minimum: 0, maximum: 100 },
+      },
+    },
+    repeat: {
+      type: 'number',
+      minimum: 1,
+      description: 'Number of times to repeat this step (optional, default: 1)',
+    },
           continue_on_error: {
             type: 'boolean',
             description: 'Continue to next repeat iteration on error (optional, default: false)',

@@ -78,7 +78,34 @@ export class StepHandler {
     const page = this.page;
 
     try {
-      const screenshot = await captureScreenshotForVision(page);
+      // Get actual viewport size from the page context
+      const actualViewport = await page.evaluate<{ width: number; height: number }>('({ width: window.innerWidth, height: window.innerHeight })');
+
+      // Calculate clip area if vision_crop is provided
+      let clip: { x: number; y: number; width: number; height: number } | undefined;
+      const cropOffset = { x: 0, y: 0 };
+
+      if (step.vision_crop) {
+        const { left = 0, top = 0, right = 0, bottom = 0 } = step.vision_crop;
+        
+        // Convert percentage to pixels
+        const x = Math.round((left / 100) * actualViewport.width);
+        const y = Math.round((top / 100) * actualViewport.height);
+        const width = Math.round(((100 - right - left) / 100) * actualViewport.width);
+        const height = Math.round(((100 - bottom - top) / 100) * actualViewport.height);
+
+        // Ensure valid dimensions
+        if (width > 0 && height > 0) {
+          clip = { x, y, width, height };
+          cropOffset.x = x;
+          cropOffset.y = y;
+          console.log(`[Vision Fallback] Cropping screenshot: x=${x}, y=${y}, w=${width}, h=${height} (Viewport: ${actualViewport.width}x${actualViewport.height})`);
+        } else {
+          console.warn(`[Vision Fallback] Invalid crop dimensions calculated: w=${width}, h=${height}. Ignoring crop.`);
+        }
+      }
+
+      const screenshot = await captureScreenshotForVision(page, clip ? { clip } : {});
       const prompt = `${step.description}. Target: ${step.target}`;
       const timeoutMs = (step.timeout ?? 30) * 1000;
 
@@ -107,9 +134,6 @@ export class StepHandler {
         };
       }
 
-      // Get actual viewport size from the page context
-      const actualViewport = await page.evaluate<{ width: number; height: number }>('({ width: window.innerWidth, height: window.innerHeight })');
-
       // Parse screenshot to get actual dimensions
       const png = PNG.sync.read(screenshot);
       const screenshotWidth = png.width;
@@ -120,7 +144,8 @@ export class StepHandler {
         screenshotWidth,
         screenshotHeight,
         actualViewport.width,
-        actualViewport.height
+        actualViewport.height,
+        cropOffset
       );
 
       console.log(`[Vision Fallback] Clicking at calculated coordinates: (${coordinates.x}, ${coordinates.y}) (Vision bbox: ${JSON.stringify(visionResult.result.bbox)})`);

@@ -10,6 +10,13 @@ export enum ActionType {
   loop = 'loop'
 }
 
+export interface VisionCrop {
+  left?: number;   // 0-100%
+  top?: number;    // 0-100%
+  right?: number;  // 0-100%
+  bottom?: number; // 0-100%
+}
+
 export interface Step {
   step_no: number;
   action: ActionType;
@@ -24,6 +31,7 @@ export interface Step {
   vision_fallback?: boolean;
   vision_target?: string;
   vision_ocr_language?: string;
+  vision_crop?: VisionCrop;
   repeat?: number;
   continue_on_error?: boolean;
   loop_steps?: Omit<Step, 'step_no'>[];

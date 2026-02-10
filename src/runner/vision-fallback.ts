@@ -105,14 +105,20 @@ export function convertVisionToPageCoordinates(
   screenshotWidth: number,
   screenshotHeight: number,
   pageWidth: number,
-  pageHeight: number
+  pageHeight: number,
+  cropOffset: { x: number; y: number } = { x: 0, y: 0 }
 ): { x: number; y: number } {
   const scaleX = pageWidth / screenshotWidth;
   const scaleY = pageHeight / screenshotHeight;
 
+  // Calculate center coordinates in the cropped image
+  const centerX = visionBbox.x * scaleX + visionBbox.width * scaleX / 2;
+  const centerY = visionBbox.y * scaleY + visionBbox.height * scaleY / 2;
+
+  // Add crop offset to get page coordinates
   return {
-    x: Math.round(visionBbox.x * scaleX + visionBbox.width * scaleX / 2),
-    y: Math.round(visionBbox.y * scaleY + visionBbox.height * scaleY / 2),
+    x: Math.round(centerX + cropOffset.x),
+    y: Math.round(centerY + cropOffset.y),
   };
 }
 
