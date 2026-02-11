@@ -122,6 +122,7 @@ export class StepHandler {
         top_k: 1,
         target: step.vision_target,
         ocr_language: step.vision_ocr_language,
+        screenHint: page.url(),
       });
 
       const timeoutPromise = new Promise<never>((_, reject) => {

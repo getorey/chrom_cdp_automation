@@ -21,7 +21,7 @@ steps:
     target: "a#non-existent-link-for-openai-test"
     description: Click non-existent link to trigger OpenAI Vision fallback
     vision_fallback: true
-    vision_target: "한국어"
+    vision_target: "지구본에"
     vision_crop:
       left: 0
       top: 0

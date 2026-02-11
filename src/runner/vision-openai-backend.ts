@@ -1,4 +1,5 @@
-import { VisionBackend, VisionBackendType, VisionDetectionOptions, VisionExecutionResult, VisionFallbackError, VisionFallbackErrorType } from './vision-fallback.js';
+import { Logger } from '@techstark/opencv-js';
+import { VisionBackend, VisionBackendType, VisionDetectionOptions, VisionExecutionResult } from './vision-fallback.js';
 import fs from 'fs';
 import path from 'path';
 import { PNG } from 'pngjs';
@@ -17,54 +18,136 @@ interface ParsedVisionResult {
   confidence: number;
 }
 
+interface VisionCacheEntry {
+  screenKey: string;
+  elementKey: string;
+  viewport: { width: number; height: number };
+  bbox_norm: { x: number; y: number; w: number; h: number };
+  last_seen: number;
+  confidence: number;
+}
+
+class VisionCacheManager {
+  private cache: Map<string, VisionCacheEntry> = new Map();
+  private readonly CACHE_FILE = path.join(process.cwd(), 'vision_cache.json');
+
+  constructor() {
+    this.load();
+  }
+
+  private load() {
+    try {
+      if (fs.existsSync(this.CACHE_FILE)) {
+        const data = fs.readFileSync(this.CACHE_FILE, 'utf-8');
+        const json = JSON.parse(data);
+        this.cache = new Map(Object.entries(json));
+      }
+    } catch (e) {
+      console.warn('[VisionCache] Failed to load cache:', e);
+    }
+  }
+
+  private save() {
+    try {
+      const obj = Object.fromEntries(this.cache);
+      fs.writeFileSync(this.CACHE_FILE, JSON.stringify(obj, null, 2));
+    } catch (e) {
+      console.warn('[VisionCache] Failed to save cache:', e);
+    }
+  }
+
+  getKey(screenKey: string, elementKey: string): string {
+    return `${screenKey}::${elementKey}`;
+  }
+
+  get(screenKey: string, elementKey: string): VisionCacheEntry | undefined {
+    const key = this.getKey(screenKey, elementKey);
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+    
+    // TTL check removed as requested (infinite persistence)
+    return entry;
+  }
+
+  set(entry: VisionCacheEntry): void {
+    const key = this.getKey(entry.screenKey, entry.elementKey);
+    this.cache.set(key, entry);
+    this.save();
+  }
+
+  delete(screenKey: string, elementKey: string): void {
+    const key = this.getKey(screenKey, elementKey);
+    this.cache.delete(key);
+    this.save();
+  }
+
+  /**
+   * Updates the confidence score using an Exponential Moving Average (EMA).
+   * @param success Whether the verification was successful (1.0) or failed (0.0)
+   * @returns true if the entry remains valid (> 0.7), false if invalidated
+   */
+  updateConfidence(screenKey: string, elementKey: string, success: boolean): boolean {
+    const key = this.getKey(screenKey, elementKey);
+    const entry = this.cache.get(key);
+    if (!entry) return false;
+
+    const alpha = 0.5; // Increased weight for new sample (was 0.3)
+    const newSample = success ? 1.0 : 0.0;
+    
+    // Update EMA
+    entry.confidence = (entry.confidence * (1 - alpha)) + (newSample * alpha);
+    entry.last_seen = Date.now();
+
+    console.log(`[VisionCache] Updated confidence for "${elementKey}": ${entry.confidence.toFixed(2)} (Success: ${success})`);
+
+    if (entry.confidence < 0.7) {
+      console.log(`[VisionCache] Confidence dropped below 0.7. Invalidating cache for "${elementKey}".`);
+      this.cache.delete(key);
+      this.save();
+      return false;
+    }
+
+    this.save();
+    return true;
+  }
+}
+
 export class OpenAIVisionBackend implements VisionBackend {
   readonly type = VisionBackendType.OpenAI;
-  //private initialized = false;
   private apiUrl: string;
   private modelName: string;
   private confidenceThreshold = 0.5;
   private maxTokens = 4096;
-  private temperature = 0.1; // Low temperature for deterministic OCR results
+  private temperature = 0.1;
   private apiKey: string | undefined;
+  private cacheManager = new VisionCacheManager();
 
   constructor(
     apiUrl: string = 'http://localhost:3000/v1',
     modelName: string = 'NCSOFT/VARCO-VISION-2.0-1.7B-OCR',
     apiKey?: string
   ) {
-    // Ensure localhost is replaced with 127.0.0.1 to avoid Node.js IPv6 issues
     this.apiUrl = apiUrl.replace(/\/$/, '').replace('localhost', '127.0.0.1');
     this.modelName = modelName;
     this.apiKey = apiKey;
   }
 
   private getModelsUrl(): string {
-    if (this.apiUrl.endsWith('/v1')) {
-      return `${this.apiUrl}/models`;
-    }
-    return `${this.apiUrl}/v1/models`;
+    return this.apiUrl.endsWith('/v1') ? `${this.apiUrl}/models` : `${this.apiUrl}/v1/models`;
   }
 
   private getChatCompletionUrl(): string {
-    if (this.apiUrl.endsWith('/v1')) {
-      return `${this.apiUrl}/chat/completions`;
-    }
-    return `${this.apiUrl}/v1/chat/completions`;
+    return this.apiUrl.endsWith('/v1') ? `${this.apiUrl}/chat/completions` : `${this.apiUrl}/v1/chat/completions`;
   }
 
   async isAvailable(): Promise<boolean> {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (this.apiKey) {
-        headers['Authorization'] = `Bearer ${this.apiKey}`;
-      }
+      if (this.apiKey) headers['Authorization'] = `Bearer ${this.apiKey}`;
       
       const modelsUrl = this.getModelsUrl();
       console.log(`[OpenAI Vision] Checking availability at: ${modelsUrl}`);
-      const response = await fetch(modelsUrl, {
-        method: 'GET',
-        headers,
-      });
+      const response = await fetch(modelsUrl, { method: 'GET', headers });
       console.log(`[OpenAI Vision] Availability check response: ${response.status} ${response.statusText}`);
       return response.ok;
     } catch (error) {
@@ -74,270 +157,352 @@ export class OpenAIVisionBackend implements VisionBackend {
   }
 
   async initialize(): Promise<void> {
-    //if (await this.isAvailable()) {
-    //  this.initialized = true;
-    //} else {
-    //  throw new VisionFallbackError(
-    //    VisionFallbackErrorType.BackendNotAvailable,
-    //    `OpenAI Vision backend not available at ${this.apiUrl}. Please ensure that the OpenAI-compatible server is running.`
-    //  );
-    //}
+    // Initialization logic if needed
+  }
+
+  private async processImage(buffer: Buffer, options: { resize?: { width: number }, grayscale?: boolean, crop?: { left: number, top: number, width: number, height: number } }): Promise<Buffer> {
+    try {
+      // Dynamic import to avoid crash if sharp is missing (e.g. standalone binaries)
+      const sharpModule = await import('sharp');
+      const sharp = sharpModule.default || sharpModule;
+      // @ts-ignore
+      let pipeline = sharp(buffer);
+
+      if (options.crop) {
+        pipeline = pipeline.extract(options.crop);
+      }
+
+      if (options.resize) {
+        pipeline = pipeline.resize({ width: options.resize.width, withoutEnlargement: true });
+      }
+
+      if (options.grayscale) {
+        pipeline = pipeline.grayscale();
+      }
+
+      return await pipeline.toBuffer();
+    } catch (error) {
+      if (options.crop) {
+        throw new Error(`Cropping requires 'sharp' module which is not available: ${error}`);
+      }
+      console.warn(`[OpenAI Vision] Image optimization failed (sharp not available), using original image.`);
+      return buffer;
+    }
   }
 
   async detectElements(
     screenshotBuffer: Buffer,
     options: VisionDetectionOptions
   ): Promise<VisionExecutionResult[]> {
-    //if (!this.initialized) {
-    //  throw new VisionFallbackError(
-    //    VisionFallbackErrorType.InitializationFailed,
-    //    'OpenAI Vision backend not initialized. Call initialize() first.'
-    //  );
-    //}
-
-    const base64Image = screenshotBuffer.toString('base64');
     const startTime = Date.now();
+    const artifactsDir = path.join(process.cwd(), 'artifacts', 'vision-debug');
+    if (!fs.existsSync(artifactsDir)) fs.mkdirSync(artifactsDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
-    // Get image dimensions for coordinate conversion
+    // Basic metadata
     const png = PNG.sync.read(screenshotBuffer);
     const imgWidth = png.width;
     const imgHeight = png.height;
+    
+    const screenKey = options.screenHint || "default_screen"; 
+    const elementKey = options.target || "unknown_element";
 
-    // Save screenshot for debugging
-    const artifactsDir = path.join(process.cwd(), 'artifacts', 'vision-debug');
-    if (!fs.existsSync(artifactsDir)) {
-      fs.mkdirSync(artifactsDir, { recursive: true });
-    }
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const screenshotPath = path.join(artifactsDir, `vision-${timestamp}.png`);
-    fs.writeFileSync(screenshotPath, screenshotBuffer);
+    // 1. FAST PATH: Check Cache
+    const cacheEntry = this.cacheManager.get(screenKey, elementKey);
 
-    console.log('\n🔍 [OpenAI Vision] Starting element detection...');
-    const sizeKB = (screenshotBuffer.length / 1024).toFixed(2);
-    console.log(`   Image Resolution: ${imgWidth} x ${imgHeight} px`);
-    console.log(`   Image Size:       ${sizeKB} KB`);
-    console.log(`   Aspect Ratio:     ${(imgWidth / imgHeight).toFixed(2)}`);
-    console.log(`   Screenshot saved: ${screenshotPath}`);
-    console.log(`   API URL: ${this.apiUrl}`);
-    console.log(`   Model: ${this.modelName}`);
-    console.log(`   Target: ${options.target || 'N/A'}`);
-    //console.log(`   Prompt: ${options.prompt}`);
+    if (cacheEntry && options.target) {
+      // Check if aspect ratio changed significantly (> 10%)
+      const currentAspect = imgWidth / imgHeight;
+      const cachedAspect = cacheEntry.viewport.width / cacheEntry.viewport.height;
+      const ratioDiff = Math.abs(currentAspect - cachedAspect) / cachedAspect;
+      
+      const aspectChanged = ratioDiff > 0.1;
 
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (this.apiKey) {
-        headers['Authorization'] = `Bearer ${this.apiKey}`;
-      }
+      if (aspectChanged) {
+        console.log(`\n⚠️ [OpenAI Vision] Viewport aspect ratio changed significantly (${cachedAspect.toFixed(2)} -> ${currentAspect.toFixed(2)}, diff: ${(ratioDiff*100).toFixed(1)}%). Skipping Fast Path to re-calibrate.`);
+        // Don't use cache, force Slow Path to update coordinates
+      } else {
+        console.log(`\n⚡ [OpenAI Vision] Cache HIT for "${elementKey}". Attempting Fast Path...`);
+        
+        const padding = 50; 
+        let roiX = Math.floor(cacheEntry.bbox_norm.x * imgWidth) - padding;
+        let roiY = Math.floor(cacheEntry.bbox_norm.y * imgHeight) - padding;
+        let roiW = Math.floor(cacheEntry.bbox_norm.w * imgWidth) + (padding * 2);
+        let roiH = Math.floor(cacheEntry.bbox_norm.h * imgHeight) + (padding * 2);
 
-      const requestBody = {
-        model: this.modelName,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                "type": "text",
-                "text": "<ocr>"
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/png;base64,${base64Image}`
+        roiX = Math.max(0, roiX);
+        roiY = Math.max(0, roiY);
+        roiW = Math.min(imgWidth - roiX, roiW);
+        roiH = Math.min(imgHeight - roiY, roiH);
+
+        if (roiW > 0 && roiH > 0) {
+          try {
+            const croppedBuffer = await this.processImage(screenshotBuffer, {
+              crop: { left: roiX, top: roiY, width: roiW, height: roiH }
+            });
+
+            console.log(`   Verifying ROI: ${roiX},${roiY} ${roiW}x${roiH}`);
+            const debugPath = path.join(artifactsDir, `vision-${timestamp}-roi.png`);
+            fs.writeFileSync(debugPath, croppedBuffer);
+
+            const verifyPrompt = `Does the image contain the element "${options.target}"? If yes, return its bounding box as JSON { "found": true, "bbox": [x, y, w, h] } where coordinates are relative to this image snippet. If no, return { "found": false }.`;
+            
+            const verificationResult = await this.callVisionAPI(croppedBuffer, verifyPrompt);
+            console.log(`   Verification API response: ${verificationResult}`);
+            let verified = false;
+            let localBbox = null;
+            
+            try {
+              const jsonMatch = verificationResult.match(/\{.*\}/s);
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (parsed.found) {
+                  verified = true;
+                  localBbox = parsed.bbox;
                 }
               }
-            ]
+            } catch (e) {
+              // Ignore parsing error
+            }
+
+            if (!verified) {
+               const parsed = this.parseVisionResults(verificationResult, roiW, roiH, options.target);
+               const targetMatch = parsed.find(p => (options.target && p.text.includes(options.target)) || p.confidence > 0.8);
+               if (targetMatch) {
+                 verified = true;
+                 localBbox = [targetMatch.bbox.x, targetMatch.bbox.y, targetMatch.bbox.width, targetMatch.bbox.height];
+               }
+            }
+
+            if (verified && localBbox) {
+              console.log(`\n✅ [OpenAI Vision] Fast Path SUCCESS. Element verified in ROI.`);
+              
+              const lx = Array.isArray(localBbox) ? localBbox[0] : localBbox.x;
+              const ly = Array.isArray(localBbox) ? localBbox[1] : localBbox.y;
+              const lw = Array.isArray(localBbox) ? localBbox[2] : localBbox.width;
+              const lh = Array.isArray(localBbox) ? localBbox[3] : localBbox.height;
+
+              let pixelX = lx;
+              let pixelY = ly;
+              let pixelW = lw;
+              let pixelH = lh;
+
+              if (lx <= 1.0 && ly <= 1.0 && lw <= 1.0 && lh <= 1.0) {
+                pixelX = lx * roiW;
+                pixelY = ly * roiH;
+                pixelW = lw * roiW;
+                pixelH = lh * roiH;
+              }
+
+              const globalX = roiX + pixelX;
+              const globalY = roiY + pixelY;
+              const globalW = pixelW;
+              const globalH = pixelH;
+
+              this.cacheManager.updateConfidence(screenKey, elementKey, true);
+
+              const updatedEntry = this.cacheManager.get(screenKey, elementKey);
+              const finalConfidence = updatedEntry ? updatedEntry.confidence : 0.95;
+
+              if (updatedEntry) {
+                   updatedEntry.bbox_norm = {
+                      x: globalX / imgWidth, 
+                      y: globalY / imgHeight, 
+                      w: globalW / imgWidth, 
+                      h: globalH / imgHeight 
+                   };
+                   this.cacheManager.set(updatedEntry);
+              }
+
+              return [{
+                result: {
+                  bbox: { x: globalX, y: globalY, width: globalW, height: globalH },
+                  confidence: finalConfidence, 
+                  label: options.target,
+                  element_id: `cached_${options.target}`
+                },
+                success: true,
+                processing_time_ms: Date.now() - startTime,
+                backend: this.type
+              }];
+            } else {
+              console.log(`\n⚠️ [OpenAI Vision] Fast Path FAILED. Element not found in ROI. Falling back to full search.`);
+              this.cacheManager.updateConfidence(screenKey, elementKey, false);
+            }
+
+          } catch (error) {
+            console.error(`   Fast Path error: ${error}. Fallback to slow path.`);
           }
-        ],
-        max_tokens: this.maxTokens,
-        temperature: this.temperature
-
-      };
-
-      const chatUrl = this.getChatCompletionUrl();
-      console.log(`\n📤 [OpenAI Vision] Sending POST request to: ${chatUrl}`);
-      //console.log(`\n📋 [OpenAI Vision] Request Headers:`, JSON.stringify(headers, null, 2));
-      //console.log(`\n📋 [OpenAI Vision] Request Body:`, JSON.stringify(requestBody, null, 2));
-
-      console.log(`\n⏳ [OpenAI Vision] Sending request with 120s timeout...`);
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000);
-      
-      let response: Response;
-      try {
-        response = await fetch(chatUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(requestBody),
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
-        console.error(`\n❌ [OpenAI Vision] Fetch error: ${errorMsg}`);
-        
-        if (errorMsg.includes('ECONNREFUSED')) {
-          throw new VisionFallbackError(
-            VisionFallbackErrorType.BackendNotAvailable,
-            `Cannot connect to server at ${chatUrl}. Is the VARCO-VISION server running on localhost:3000?`
-          );
         }
-        
-        throw new VisionFallbackError(
-          VisionFallbackErrorType.DetectionFailed,
-          `Network error: ${errorMsg}`
-        );
       }
+    }
 
-      console.log(`\n📥 [OpenAI Vision] Response status: ${response.status}`);
+    // 2. SLOW PATH: Full Search with Optimization
+    console.log('\n🔍 [OpenAI Vision] Starting full element detection (Slow Path)...');
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`   Error response: ${errorText}`);
-        throw new VisionFallbackError(
-          VisionFallbackErrorType.DetectionFailed,
-          `OpenAI Vision request failed with status ${response.status}: ${errorText}`
-        );
-      }
+    let processedBuffer = screenshotBuffer;
+    try {
+      processedBuffer = await this.processImage(screenshotBuffer, {
+        resize: { width: 960 }, // Increased resolution to FHD
+        grayscale: true          // Keep color for better accuracy
+      });
+      console.log(`   Image optimized: Resized (max 1920px)`);
+    } catch (e) {
+      console.warn(`   Image optimization failed, using original. Error: ${e}`);
+    }
 
-      const result = await response.json() as OpenAIResponse;
-      const processingTimeMs = Date.now() - startTime;
+    const screenshotPath = path.join(artifactsDir, `vision-${timestamp}-optimized.png`);
+    fs.writeFileSync(screenshotPath, processedBuffer);
+    console.log(`   Debug image saved: ${screenshotPath}`);
 
-      // Save API response for debugging
-      const responsePath = path.join(artifactsDir, `vision-${timestamp}-response.json`);
-      fs.writeFileSync(responsePath, JSON.stringify(result, null, 2));
+    const optPng = PNG.sync.read(processedBuffer);
+    const optWidth = optPng.width;
+    const optHeight = optPng.height;
+    
+    const scaleX = imgWidth / optWidth;
+    const scaleY = imgHeight / optHeight;
 
-      console.log(`\n✅ [OpenAI Vision] Result received (${processingTimeMs}ms)`);
-      console.log(`   Response saved: ${responsePath}`);
+    try {
+      const apiPrompt = options.prompt || `"${options.target}"`;
+      const visionText = await this.callVisionAPI(processedBuffer, apiPrompt);
 
-      if (!result.choices || result.choices.length === 0) {
-        console.log(`   ⚠️ No choices in response`);
-        return [{
-          result: {
-            bbox: { x: 0, y: 0, width: 0, height: 0 },
-            confidence: 0,
-            label: '',
-            element_id: '',
-          },
-          success: false,
-          error: 'No vision results from OpenAI API',
-          processing_time_ms: processingTimeMs,
-          backend: this.type,
-        }];
-      }
+      const responsePath = path.join(artifactsDir, `vision-${timestamp}-response.txt`);
+      fs.writeFileSync(responsePath, visionText);
 
-      const choice = result.choices[0];
-      if (!choice || !choice.message) {
-        console.log(`   ⚠️ No valid choice in response`);
-        return [{
-          result: {
-            bbox: { x: 0, y: 0, width: 0, height: 0 },
-            confidence: 0,
-            label: '',
-            element_id: '',
-          },
-          success: false,
-          error: 'Invalid response format from OpenAI API',
-          processing_time_ms: processingTimeMs,
-          backend: this.type,
-        }];
-      }
-
-      const visionText = choice.message.content;
-      console.log(`   Vision Text: ${visionText.substring(0, 200)}${visionText.length > 200 ? '...' : ''}`);
-
-      // Parse vision results to extract bounding boxes and text
-      const parsedResults = this.parseVisionResults(visionText, imgWidth, imgHeight, options.target);
-
-      if (parsedResults.length === 0) {
-        console.log(`   ⚠️ No elements could be parsed from vision result`);
-        return [{
-          result: {
-            bbox: { x: 0, y: 0, width: 0, height: 0 },
-            confidence: 0,
-            label: '',
-            element_id: '',
-          },
-          success: false,
-          error: 'Failed to parse vision results',
-          processing_time_ms: processingTimeMs,
-          backend: this.type,
-        }];
-      }
-
+      const parsedResults = this.parseVisionResults(visionText, optWidth, optHeight, options.target);
+      
       console.log(`\n📊 [OpenAI Vision] Parsed ${parsedResults.length} element(s)`);
 
-      // Filter by confidence threshold
-      let filteredResults = parsedResults.filter(
-        (elem) => elem.confidence >= this.confidenceThreshold
-      );
-
-      console.log(`   After confidence filter (>=${this.confidenceThreshold}): ${filteredResults.length} elements`);
-
-      // If target text specified, filter by that
+      let filteredResults = parsedResults.filter(r => r.confidence >= this.confidenceThreshold);
       if (options.target) {
         const targetText = options.target.toLowerCase();
-        console.log(`   Filtering by target text: "${targetText}"`);
-
-        filteredResults = filteredResults.filter((elem) =>
-          elem.text.toLowerCase().includes(targetText)
-        );
-
-        console.log(`   After text filter: ${filteredResults.length} elements`);
+        filteredResults = filteredResults.filter(r => r.text.toLowerCase().includes(targetText));
       }
 
       if (filteredResults.length === 0) {
-        console.log(`   ⚠️ No elements after filtering`);
         return [{
-          result: {
-            bbox: { x: 0, y: 0, width: 0, height: 0 },
-            confidence: 0,
-            label: '',
-            element_id: '',
-          },
+          result: { bbox: { x: 0, y: 0, width: 0, height: 0 }, confidence: 0, label: '', element_id: '' },
           success: false,
-          error: `No elements met confidence threshold of ${this.confidenceThreshold}` +
-            (options.target ? ` or matched target text "${options.target}"` : ''),
-          processing_time_ms: processingTimeMs,
-          backend: this.type,
+          error: 'No elements found matching criteria',
+          processing_time_ms: Date.now() - startTime,
+          backend: this.type
         }];
       }
 
-      // Convert to VisionExecutionResult format
-      const visionResults: VisionExecutionResult[] = filteredResults.map((elem) => ({
-        result: {
-          bbox: elem.bbox,
-          confidence: elem.confidence,
-          label: elem.text,
-          element_id: `openai_${elem.text.substring(0, 20).replace(/\s+/g, '_')}`,
-        },
-        success: true,
-        processing_time_ms: processingTimeMs,
-        backend: this.type,
-      }));
+      const target = options.target;
+      const finalResults: VisionExecutionResult[] = filteredResults.map(r => {
+        const globalBbox = {
+          x: r.bbox.x * scaleX,
+          y: r.bbox.y * scaleY,
+          width: r.bbox.width * scaleX,
+          height: r.bbox.height * scaleY
+        };
 
-      console.log(`\n✅ [OpenAI Vision] Final results: ${visionResults.length} element(s)`);
-      visionResults.forEach((vr, i) => {
-        console.log(`   [${i}] text="${vr.result.label}", confidence=${vr.result.confidence.toFixed(2)}, coords=(${Math.round(vr.result.bbox.x)}, ${Math.round(vr.result.bbox.y)})`);
+        // Cache the best match
+        if (target && r.text.toLowerCase().includes(target.toLowerCase())) {
+          // Do NOT cache if it's the fallback whole-screen match
+          const isWholeScreen = globalBbox.width >= imgWidth * 0.9 && globalBbox.height >= imgHeight * 0.9;
+          
+          if (!isWholeScreen) {
+            this.cacheManager.set({
+              screenKey,
+              elementKey,
+              viewport: { width: imgWidth, height: imgHeight },
+              bbox_norm: { 
+                x: globalBbox.x / imgWidth, 
+                y: globalBbox.y / imgHeight, 
+                w: globalBbox.width / imgWidth, 
+                h: globalBbox.height / imgHeight 
+              },
+              last_seen: Date.now(),
+              confidence: r.confidence
+            });
+            console.log(`   Cached location for "${elementKey}"`);
+          } else {
+             console.log(`   Skipping cache for "${elementKey}" (Whole screen fallback)`);
+          }
+        }
+
+        return {
+          result: {
+            bbox: globalBbox,
+            confidence: r.confidence,
+            label: r.text,
+            element_id: `openai_${r.text.substring(0, 20).replace(/\s+/g, '_')}`
+          },
+          success: true,
+          processing_time_ms: Date.now() - startTime,
+          backend: this.type
+        };
       });
 
-      return visionResults;
+      return finalResults;
 
     } catch (error) {
       console.error(`\n❌ [OpenAI Vision] Error: ${error}`);
       return [{
-        result: {
-          bbox: { x: 0, y: 0, width: 0, height: 0 },
-          confidence: 0,
-          label: '',
-          element_id: '',
-        },
+        result: { bbox: { x: 0, y: 0, width: 0, height: 0 }, confidence: 0, label: '', element_id: '' },
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown OpenAI Vision error',
+        error: error instanceof Error ? error.message : 'Unknown error',
         processing_time_ms: Date.now() - startTime,
-        backend: this.type,
+        backend: this.type
       }];
+    }
+  }
+
+  private async callVisionAPI(imageBuffer: Buffer, _promptText: string): Promise<string> {
+    const base64Image = imageBuffer.toString('base64');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.apiKey) headers['Authorization'] = `Bearer ${this.apiKey}`;
+
+    const requestBody = {
+      model: this.modelName,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { "type": "text", "text": "<ocr>" },
+            { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}` } }
+          ]
+        }
+      ],
+      max_tokens: this.maxTokens,
+      temperature: this.temperature
+    };
+
+    const chatUrl = this.getChatCompletionUrl();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+    console.log(`[OpenAI Vision] Sending request body "${JSON.stringify(requestBody).substring(0, 1000)}..." to ${chatUrl}`);
+
+    try {
+      const response = await fetch(chatUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      console.log(`[OpenAI Vision] API response status: ${response.status} ${response.statusText}`);
+
+      if (!response.ok) {
+        throw new Error(`Status ${response.status}: ${await response.text()}`);
+      }
+
+      const result = await response.json() as OpenAIResponse;
+      if (!result.choices || result.choices.length === 0) {
+        throw new Error('No choices in response');
+      }
+      const choice = result.choices[0];
+      if (!choice || !choice.message) {
+         throw new Error('Invalid choice in response');
+      }
+      return choice.message.content;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
     }
   }
 
@@ -354,18 +519,23 @@ export class OpenAIVisionBackend implements VisionBackend {
     // Try to parse as JSON first
     try {
       const jsonData = JSON.parse(visionText);
-      if (Array.isArray(jsonData)) {
-        return jsonData.map((item: any) => ({
-          text: item.text || item.content || '',
-          bbox: {
-            x: item.bbox?.[0] || item.x || 0,
-            y: item.bbox?.[1] || item.y || 0,
-            width: (item.bbox?.[2] || item.width || 0) - (item.bbox?.[0] || item.x || 0),
-            height: (item.bbox?.[3] || item.height || 0) - (item.bbox?.[1] || item.y || 0),
-          },
-          confidence: item.confidence || 0.8,
-        }));
-      }
+      const items = Array.isArray(jsonData) ? jsonData : [jsonData];
+      
+      items.forEach((item: any) => {
+        if (item.bbox || item.x) {
+             results.push({
+                text: item.text || item.content || item.label || '',
+                bbox: {
+                  x: item.bbox?.[0] || item.x || 0,
+                  y: item.bbox?.[1] || item.y || 0,
+                  width: (item.bbox?.[2] || item.width || 0) - (item.bbox?.[0] || item.x || 0), // If [x1, y1, x2, y2]
+                  height: (item.bbox?.[3] || item.height || 0) - (item.bbox?.[1] || item.y || 0),
+                },
+                confidence: item.confidence || 0.8,
+              });
+        }
+      });
+      if (results.length > 0) return results;
     } catch {
       // Not JSON, parse as text
     }
@@ -375,8 +545,6 @@ export class OpenAIVisionBackend implements VisionBackend {
     const lines = visionText.split('\n');
     
     // VARCO format: text immediately followed by coordinates
-    // e.g., "한국어0.371, 0.095, 0.411, 0.107"
-    // Also handles cases where VARCO echoes the prompt: "...Find element containing text: "한국어"0.361, 0.093, 0.409, 0.102"
     const varcoPattern = /^.*?"?([^"\d][^"]*?)"?\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)$/;
     
     // Standard format: "Text: ... at (x, y, width, height) confidence: ..."
@@ -391,9 +559,7 @@ export class OpenAIVisionBackend implements VisionBackend {
       if (varcoMatch) {
         const [, textMatch, x1, y1, x2, y2] = varcoMatch;
         if (textMatch && x1 && y1 && x2 && y2) {
-          // Clean up text - remove common prompt artifacts
           let cleanText = textMatch.trim();
-          // Remove prompt echo artifacts
           const promptArtifacts = [
             'Click non-existent link to trigger OpenAI Vision fallback.',
             'Target: a#non-existent-link-for-openai-test',
@@ -405,7 +571,6 @@ export class OpenAIVisionBackend implements VisionBackend {
           }
           cleanText = cleanText.replace(/^["']|["']$/g, '').trim();
           
-          // Skip if cleaned text is empty
           if (!cleanText) continue;
           
           results.push({
@@ -416,7 +581,7 @@ export class OpenAIVisionBackend implements VisionBackend {
               width: (parseFloat(x2) - parseFloat(x1)) * imgWidth,
               height: (parseFloat(y2) - parseFloat(y1)) * imgHeight,
             },
-            confidence: 0.8, // VARCO doesn't provide confidence, use default
+            confidence: 0.8, 
           });
           continue;
         }
@@ -436,23 +601,11 @@ export class OpenAIVisionBackend implements VisionBackend {
           if (bboxX <= 1 && bboxY <= 1 && bboxW <= 1 && bboxH <= 1) {
             bboxX *= imgWidth;
             bboxY *= imgHeight;
-            bboxW = (bboxW - parseFloat(x)) * imgWidth; // If width is actually x2, need check. Assuming width here as per regex.
-            bboxH = (bboxH - parseFloat(y)) * imgHeight;
-          } else {
-             // Already pixel coordinates? Check format.
-             // Standard format regex has width/height, not x2/y2 usually.
-             // "at (x, y, width, height)"
-             // If > 1, assume pixels.
-             // Regex extracts 4 numbers. If it's x,y,x2,y2 format, then need width = x2-x.
-             // Assuming width/height for now.
-             bboxW = bboxW - bboxX; // If regex captured x2, convert to width
-             bboxH = bboxH - bboxY; // If regex captured y2, convert to height
-             // Wait, standard pattern: (x, y, width, height) usually.
-             // But if it's x,y,x2,y2, then width = x2-x1.
-             // Given VARCO is x1,y1,x2,y2. Standard might be x,y,w,h.
-             // Let's assume standard pattern matches x,y,x2,y2 for safety if > x.
-             if (bboxW > bboxX) bboxW -= bboxX;
-             if (bboxH > bboxY) bboxH -= bboxY;
+            // Assuming width/height are relative dimensions if normalized
+            // But if x2/y2, we need subtract. 
+            // Standardizing on x,y,w,h here for simplicity
+            bboxW *= imgWidth; 
+            bboxH *= imgHeight;
           }
 
           results.push({
@@ -523,3 +676,4 @@ export class OpenAIVisionBackend implements VisionBackend {
     this.apiKey = apiKey;
   }
 }
+

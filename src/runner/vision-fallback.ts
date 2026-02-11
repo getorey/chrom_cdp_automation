@@ -21,6 +21,7 @@ export interface VisionDetectionOptions {
   top_k?: number;
   target?: string | undefined;
   ocr_language?: string | undefined;
+  screenHint?: string;
 }
 
 export interface VisionExecutionResult {
