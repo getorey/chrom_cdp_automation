@@ -1,0 +1,18 @@
+{
+  "pkg": {
+    "scripts": [
+      "dist/launcher.cjs"
+    ],
+    "assets": [
+      "dist/bundle.js",
+      "config.json",
+      "flows/**/*",
+      "docs/**/*",
+      "templates/**/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ],
+    "output": "dist/chrome-cdp.exe"
+  }
+}

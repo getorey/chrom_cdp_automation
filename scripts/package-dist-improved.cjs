@@ -4,7 +4,7 @@ const { execSync } = require('child_process');
 const archiver = require('archiver');
 
 const DIST_DIR = 'dist';
-const EXE_NAME = 'chrome-cdp-standalone.exe';
+const EXE_NAME = 'chrome-cdp.exe';
 const RELEASE_DIR = 'release/chrome-cdp-windows';
 const ZIP_NAME = 'chrome-cdp-windows.zip';
 
@@ -83,35 +83,62 @@ async function packageDistribution() {
   }
 
   const sharpDir = path.join(RELEASE_DIR, 'node_modules', 'sharp');
-  fs.mkdirSync(sharpDir, { recursive: true });
+  if (fs.existsSync('node_modules/sharp')) {
+    copyDir('node_modules/sharp', sharpDir);
+    console.log('✅ Copied local sharp module');
+  }
+
+  // Copy @img (sharp binaries for 0.33+)
+  const imgDir = path.join(RELEASE_DIR, 'node_modules', '@img');
+  if (fs.existsSync('node_modules/@img')) {
+    copyDir('node_modules/@img', imgDir);
+    console.log('✅ Copied local @img (sharp binaries)');
+  }
+
+  // Copy Playwright (must be external to pkg to avoid 'Invalid host defined options')
+  const playwrightDir = path.join(RELEASE_DIR, 'node_modules', 'playwright');
+  if (fs.existsSync('node_modules/playwright')) {
+    copyDir('node_modules/playwright', playwrightDir);
+    console.log('✅ Copied local playwright module');
+  }
+
+  const playwrightCoreDir = path.join(RELEASE_DIR, 'node_modules', 'playwright-core');
+  if (fs.existsSync('node_modules/playwright-core')) {
+    copyDir('node_modules/playwright-core', playwrightCoreDir);
+    console.log('✅ Copied local playwright-core module');
+  }
+
+  // Copy other dependencies that sharp might need if they aren't bundled in sharp itself
+  // Sharp 0.33+ is pretty self-contained in @img
   
   const sharpReadme = `
-IMPORTANT: Sharp Native Dependency Missing
+IMPORTANT: Dependencies (Sharp & Playwright)
 ==========================================
 
-This application uses the 'sharp' library for image processing (template matching).
-Because 'sharp' relies on platform-specific native binaries, the included executable
-cannot contain the Windows binaries if it was built on macOS/Linux.
+This application includes 'sharp' and 'playwright' libraries.
+The necessary files have been copied from the build environment.
 
-To make template matching work on Windows:
-
-Option 1 (If you have Node.js installed):
-1. Open this folder in Command Prompt/PowerShell
-2. Run: npm install --platform=win32 --arch=x64 sharp
-
-Option 2 (Manual Copy):
-1. On a Windows machine, run 'npm install sharp' in any empty folder
-2. Copy the resulting 'node_modules' folder here, merging with this one.
+If you encounter errors:
+1. Ensure the 'node_modules' folder is in the same directory as the executable.
+2. The included binaries are for Windows x64.
+3. Playwright browsers are NOT included by default. 
+   Running the app might trigger browser download, or ensure Chrome is installed.
 `;
   fs.writeFileSync(path.join(RELEASE_DIR, 'README_DEPENDENCIES.txt'), sharpReadme);
   console.log('✅ Created dependency instructions');
 
   const batContent = `
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 
 echo [Chrome CDP Automation Launcher]
 echo.
+
+:: Get the directory where this batch file is located
+set "SCRIPT_DIR=%~dp0"
+
+:: Set NODE_PATH to include local node_modules for pkg external dependencies
+set "NODE_PATH=%SCRIPT_DIR%node_modules"
 
 :: Check for Chrome
 if not exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (
@@ -120,15 +147,21 @@ if not exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (
 )
 
 :: Check configuration
-if not exist config.json (
+if not exist "%SCRIPT_DIR%config.json" (
     echo [ERROR] config.json not found!
     pause
     exit /b 1
 )
 
+:: Check node_modules exists
+if not exist "%SCRIPT_DIR%node_modules" (
+    echo [WARNING] node_modules folder not found. Some features may not work.
+)
+
 :: Run the application
 echo Starting Chrome CDP Automation...
-chrome-cdp-standalone.exe %*
+echo NODE_PATH: %NODE_PATH%
+"%SCRIPT_DIR%chrome-cdp.exe" %*
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
