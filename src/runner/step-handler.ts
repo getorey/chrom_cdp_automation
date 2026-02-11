@@ -297,6 +297,27 @@ export class StepHandler {
           }
         }
         break;
+      case ActionType.wait_for_popup:
+        console.log(`[TabManager] Waiting for popup (timeout: ${step.timeout ?? 5000}ms)...`);
+        const popupPage = await this.cdpConnector.waitForPopup(step.timeout ?? 5000);
+        await this.cdpConnector.connect(popupPage);
+        console.log(`[TabManager] Popup detected and connected: ${await popupPage.title()}`);
+        break;
+      case ActionType.switch_to_tab:
+        if (step.tab_index !== undefined) {
+          console.log(`[TabManager] Switching to tab by index: ${step.tab_index}`);
+          await this.cdpConnector.switchToTabByIndex(step.tab_index);
+        } else if (step.tab_title) {
+          console.log(`[TabManager] Switching to tab by title: "${step.tab_title}"`);
+          await this.cdpConnector.switchToTabByTitle(step.tab_title);
+        } else {
+          throw new Error('switch_to_tab action requires tab_index or tab_title');
+        }
+        break;
+      case ActionType.close_tab:
+        console.log(`[TabManager] Closing current tab (return_to_previous: ${step.return_to_previous ?? false})`);
+        await this.cdpConnector.closeTab(step.return_to_previous ?? false);
+        break;
       default:
         throw new Error(`Unknown action type: ${step.action}`);
     }

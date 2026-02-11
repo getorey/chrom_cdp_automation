@@ -7,7 +7,10 @@ export enum ActionType {
   wait = 'wait',
   select = 'select',
   press = 'press',
-  loop = 'loop'
+  loop = 'loop',
+  wait_for_popup = 'wait_for_popup',
+  switch_to_tab = 'switch_to_tab',
+  close_tab = 'close_tab'
 }
 
 export interface VisionCrop {
@@ -35,6 +38,10 @@ export interface Step {
   repeat?: number;
   continue_on_error?: boolean;
   loop_steps?: Omit<Step, 'step_no'>[];
+  // Tab/Popup management
+  tab_index?: number;           // For switch_to_tab: 0-based index
+  tab_title?: string;           // For switch_to_tab: match by title
+  return_to_previous?: boolean; // For close_tab: return to previous tab
 }
 
 export interface Flow {

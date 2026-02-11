@@ -90,7 +90,7 @@ const stepSchema = {
         properties: {
           action: {
             type: 'string',
-            enum: ['navigate', 'click', 'click_at', 'click_template', 'type', 'wait', 'select', 'press', 'loop'],
+enum: ['navigate', 'click', 'click_at', 'click_template', 'type', 'wait', 'select', 'press', 'loop', 'wait_for_popup', 'switch_to_tab', 'close_tab'],
             description: 'Action to perform',
           },
           template_path: {
@@ -165,6 +165,20 @@ const stepSchema = {
           },
         },
       },
+    },
+    // Tab/Popup management fields
+    tab_index: {
+      type: 'number',
+      minimum: 0,
+      description: 'Tab index for switch_to_tab action (0-based)',
+    },
+    tab_title: {
+      type: 'string',
+      description: 'Tab title pattern for switch_to_tab action',
+    },
+    return_to_previous: {
+      type: 'boolean',
+      description: 'Return to previous tab after closing (for close_tab action)',
     },
   },
 };

@@ -2,11 +2,17 @@ import { Page, Browser, chromium } from 'playwright';
 
 export class CDPConnector {
   private page: Page | null = null;
+  private browser: Browser | null = null;
+  private previousPage: Page | null = null; // For returning to previous tab
 
   constructor() {}
 
-  async connect(page: Page): Promise<void> {
+  async connect(page: Page, browser?: Browser): Promise<void> {
+    this.previousPage = this.page;
     this.page = page;
+    if (browser) {
+      this.browser = browser;
+    }
   }
 
   async disconnect(): Promise<void> {
@@ -22,6 +28,134 @@ export class CDPConnector {
       throw new Error('CDP not connected');
     }
     return this.page;
+  }
+
+  getBrowser(): Browser | null {
+    return this.browser;
+  }
+
+  setBrowser(browser: Browser): void {
+    this.browser = browser;
+  }
+
+  /**
+   * Wait for a new popup/tab to open
+   */
+  async waitForPopup(timeout: number = 5000): Promise<Page> {
+    if (!this.browser) {
+      throw new Error('Browser not connected');
+    }
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`Popup wait timeout after ${timeout}ms`));
+      }, timeout);
+
+      const handler = (page: Page) => {
+        clearTimeout(timer);
+        (this.browser! as any).off('page', handler);
+        resolve(page);
+      };
+
+      (this.browser as any).on('page', handler);
+    });
+  }
+
+  /**
+   * Switch to a tab by index (0-based)
+   */
+  async switchToTabByIndex(index: number): Promise<void> {
+    if (!this.browser) {
+      throw new Error('Browser not connected');
+    }
+
+    const contexts = this.browser.contexts();
+    const allPages: Page[] = [];
+    
+    for (const context of contexts) {
+      allPages.push(...context.pages());
+    }
+
+    if (index < 0 || index >= allPages.length) {
+      throw new Error(`Tab index ${index} out of range. Total tabs: ${allPages.length}`);
+    }
+
+    this.previousPage = this.page;
+    this.page = allPages[index]!;
+  }
+
+  /**
+   * Switch to a tab by title (partial match)
+   */
+  async switchToTabByTitle(title: string): Promise<void> {
+    if (!this.browser) {
+      throw new Error('Browser not connected');
+    }
+
+    const contexts = this.browser.contexts();
+    
+    for (const context of contexts) {
+      for (const page of context.pages()) {
+        try {
+          const pageTitle = await page.title();
+          if (pageTitle.includes(title)) {
+            this.previousPage = this.page;
+            this.page = page;
+            return;
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+
+    throw new Error(`No tab found with title containing: "${title}"`);
+  }
+
+  /**
+   * Close current tab and optionally return to previous tab
+   */
+  async closeTab(returnToPrevious: boolean = false): Promise<void> {
+    if (!this.page) {
+      throw new Error('No active tab to close');
+    }
+
+    const pageToClose = this.page;
+    
+    if (returnToPrevious && this.previousPage) {
+      this.page = this.previousPage;
+      this.previousPage = null;
+    } else {
+      // Try to find another tab to switch to
+      if (this.browser) {
+        const contexts = this.browser.contexts();
+        for (const context of contexts) {
+          const pages = context.pages();
+          const otherPage = pages.find(p => p !== pageToClose);
+          if (otherPage) {
+            this.page = otherPage || null;
+            break;
+          }
+        }
+      }
+    }
+
+    await pageToClose.close();
+  }
+
+  /**
+   * Get all available tabs/pages
+   */
+  getAllTabs(): Page[] {
+    if (!this.browser) {
+      return this.page ? [this.page] : [];
+    }
+
+    const allPages: Page[] = [];
+    for (const context of this.browser.contexts()) {
+      allPages.push(...context.pages());
+    }
+    return allPages;
   }
 }
 
