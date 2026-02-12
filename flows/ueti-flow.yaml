@@ -1,0 +1,36 @@
+
+
+name: 온라인수장 테스트
+description: Demonstrates all action types by searching on Wikipedia and selecting a language
+url_prefix: https://edu.ueti.or.kr
+
+vision_fallback: true
+vision_backend: openai
+vision_api_url: http://localhost:3000/v1
+vision_model_name: NCSOFT/VARCO-VISION-2.0-1.7B-OCR
+# vision_api_key: your-api-key-if-required
+
+steps:
+
+  - step_no: 1
+    action: navigate
+    target: https://edu.ueti.or.kr/lh/mc/ch/selectMcLrnrHomePopup.do#
+    description: Navigate to example page
+    timeout: 1000
+
+
+  # Step 1: Navigate to Wikipedia homepage
+  # Action: navigate - Opens the specified URL in the browser
+  # Target: Full URL to navigate to
+  - step_no: 2
+    action: click
+    target: "a#non-existent-link-for-openai-test"
+    description: Click non-existent link to trigger OpenAI Vision fallback
+    vision_fallback: true
+    vision_target: "다음"
+    vision_crop:
+      left: 0
+      top: 0
+      right: 0
+      bottom: 0
+    timeout: 100000

@@ -27,7 +27,7 @@ steps:
       top: 0
       right: 0
       bottom: 20
-    timeout: 10000
+    timeout: 3000
 
 
   - step_no: 3
