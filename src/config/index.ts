@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 
 export interface AppConfig {
   paths: {
@@ -7,6 +7,7 @@ export interface AppConfig {
     flows: string;
     artifacts: string;
     templates: string;
+    cache: string;
   };
   cdp: {
     port: number;
@@ -31,6 +32,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     flows: './flows',
     artifacts: './artifacts',
     templates: './templates',
+    cache: './cache',
   },
   cdp: {
     port: 9222,
@@ -118,12 +120,35 @@ function mergeConfig(defaults: AppConfig, user: Partial<AppConfig>): AppConfig {
   };
 }
 
+/**
+ * Check if running in pkg environment
+ * In pkg, process.pkg is set to true
+ */
+function isPkgEnvironment(): boolean {
+  return !!(process as any).pkg || process.execPath.endsWith('.exe') && !process.execPath.includes('node');
+}
+
+/**
+ * Get the base directory for resolving paths
+ * - In pkg environment: use executable's directory
+ * - In normal Node.js: use process.cwd()
+ */
+function getBaseDir(): string {
+  if (isPkgEnvironment()) {
+    // In pkg environment, use the directory where the .exe is located
+    return dirname(process.execPath);
+  }
+  // In normal Node.js environment, use current working directory
+  return process.cwd();
+}
+
 export function resolvePath(configPath: string): string {
   if (configPath.startsWith('./') || configPath.startsWith('.\\')) {
-    return join(process.cwd(), configPath.slice(2));
+    // Use getBaseDir() instead of process.cwd() to support pkg environment
+    return join(getBaseDir(), configPath.slice(2));
   }
   if (configPath.startsWith('~/') || configPath.startsWith('~\\')) {
-    const homedir = process.env.HOME || process.env.USERPROFILE || process.cwd();
+    const homedir = process.env.HOME || process.env.USERPROFILE || getBaseDir();
     return join(homedir, configPath.slice(2));
   }
   return configPath;
@@ -143,4 +168,8 @@ export function getArtifactsPath(): string {
 
 export function getTemplatesPath(): string {
   return resolvePath(loadConfig().paths.templates);
+}
+
+export function getCachePath(): string {
+  return resolvePath(loadConfig().paths.cache);
 }
