@@ -1,8 +1,8 @@
-import { Logger } from '@techstark/opencv-js';
 import { VisionBackend, VisionBackendType, VisionDetectionOptions, VisionExecutionResult } from './vision-fallback.js';
 import fs from 'fs';
 import path from 'path';
 import { PNG } from 'pngjs';
+import { getCachePath } from '../config/index.js';
 
 interface OpenAIResponse {
   choices: Array<{
@@ -29,9 +29,15 @@ interface VisionCacheEntry {
 
 class VisionCacheManager {
   private cache: Map<string, VisionCacheEntry> = new Map();
-  private readonly CACHE_FILE = path.join(process.cwd(), 'vision_cache.json');
+  private readonly CACHE_FILE: string;
 
   constructor() {
+    const cacheDir = getCachePath();
+    // Ensure cache directory exists
+    if (!fs.existsSync(cacheDir)) {
+      fs.mkdirSync(cacheDir, { recursive: true });
+    }
+    this.CACHE_FILE = path.join(cacheDir, 'vision_cache.json');
     this.load();
   }
 
@@ -161,33 +167,71 @@ export class OpenAIVisionBackend implements VisionBackend {
   }
 
   private async processImage(buffer: Buffer, options: { resize?: { width: number }, grayscale?: boolean, crop?: { left: number, top: number, width: number, height: number } }): Promise<Buffer> {
-    try {
-      // Dynamic import to avoid crash if sharp is missing (e.g. standalone binaries)
-      const sharpModule = await import('sharp');
-      const sharp = sharpModule.default || sharpModule;
-      // @ts-ignore
-      let pipeline = sharp(buffer);
-
-      if (options.crop) {
-        pipeline = pipeline.extract(options.crop);
+    // Handle cropping with PNGJS (no sharp required) - for Fast Path ROI verification
+    if (options.crop) {
+      try {
+        const png = PNG.sync.read(buffer);
+        const crop = options.crop;
+        
+        // Validate crop bounds (use non-null assertion since we've checked options.crop exists)
+        const cropLeft = Math.max(0, Math.min(crop.left!, png.width));
+        const cropTop = Math.max(0, Math.min(crop.top!, png.height));
+        const cropWidth = Math.min(crop.width!, png.width - cropLeft);
+        const cropHeight = Math.min(crop.height!, png.height - cropTop);
+        
+        if (cropWidth <= 0 || cropHeight <= 0) {
+          console.warn(`[OpenAI Vision] Invalid crop dimensions, using original image.`);
+          return buffer;
+        }
+        
+        // Create new PNG for cropped region
+        const croppedPng = new PNG({ width: cropWidth, height: cropHeight });
+        
+        // Copy pixel data from source to cropped region
+        for (let y = 0; y < cropHeight; y++) {
+          for (let x = 0; x < cropWidth; x++) {
+            const srcIdx = ((cropTop + y) * png.width + (cropLeft + x)) * 4;
+            const dstIdx = (y * cropWidth + x) * 4;
+            
+            croppedPng.data[dstIdx] = png.data[srcIdx]!;       // R
+            croppedPng.data[dstIdx + 1] = png.data[srcIdx + 1]!; // G
+            croppedPng.data[dstIdx + 2] = png.data[srcIdx + 2]!; // B
+            croppedPng.data[dstIdx + 3] = png.data[srcIdx + 3]!; // A
+          }
+        }
+        
+        return PNG.sync.write(croppedPng);
+      } catch (error) {
+        console.warn(`[OpenAI Vision] PNG cropping failed: ${error}. Using original image.`);
+        return buffer;
       }
-
-      if (options.resize) {
-        pipeline = pipeline.resize({ width: options.resize.width, withoutEnlargement: true });
-      }
-
-      if (options.grayscale) {
-        pipeline = pipeline.grayscale();
-      }
-
-      return await pipeline.toBuffer();
-    } catch (error) {
-      if (options.crop) {
-        throw new Error(`Cropping requires 'sharp' module which is not available: ${error}`);
-      }
-      console.warn(`[OpenAI Vision] Image optimization failed (sharp not available), using original image.`);
-      return buffer;
     }
+    
+    // For resize/grayscale, try to use sharp if available
+    if (options.resize || options.grayscale) {
+      try {
+        const sharpModule = await import('sharp');
+        const sharp = sharpModule.default || sharpModule;
+        // @ts-ignore
+        let pipeline = sharp(buffer);
+
+        if (options.resize) {
+          pipeline = pipeline.resize({ width: options.resize.width, withoutEnlargement: true });
+        }
+
+        if (options.grayscale) {
+          pipeline = pipeline.grayscale();
+        }
+
+        return await pipeline.toBuffer();
+      } catch (error) {
+        console.warn(`[OpenAI Vision] Image optimization failed (sharp not available), using original image.`);
+        return buffer;
+      }
+    }
+    
+    // No processing needed
+    return buffer;
   }
 
   async detectElements(
@@ -344,7 +388,7 @@ export class OpenAIVisionBackend implements VisionBackend {
     try {
       processedBuffer = await this.processImage(screenshotBuffer, {
         resize: { width: 960 }, // Increased resolution to FHD
-        grayscale: true          // Keep color for better accuracy
+        grayscale: false          // Keep color for better accuracy
       });
       console.log(`   Image optimized: Resized (max 1920px)`);
     } catch (e) {
