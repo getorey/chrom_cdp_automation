@@ -30,6 +30,22 @@ export class StepHandler {
     this.visionApiKey = flow.vision_api_key;
   }
 
+  /**
+   * Normalize URL to use only hostname + pathname for consistent cache keys.
+   * Removes query parameters, hash fragments, and session IDs.
+   */
+  private normalizeScreenHint(url: string): string {
+    try {
+      const parsed = new URL(url);
+      // Use only hostname and pathname for stable cache key
+      // This ignores query params, hash, port, protocol, and session IDs
+      return `${parsed.hostname}${parsed.pathname}`;
+    } catch {
+      // Fallback to original URL if parsing fails
+      return url;
+    }
+  }
+
   private async initializeVisionBackend(step?: Step): Promise<void> {
     const shouldInitialize = (step?.vision_fallback) ?? this.globalVisionFallbackEnabled;
     
@@ -122,7 +138,7 @@ export class StepHandler {
         top_k: 1,
         target: step.vision_target,
         ocr_language: step.vision_ocr_language,
-        screenHint: page.url(),
+        screenHint: this.normalizeScreenHint(page.url()),
       });
 
       const timeoutPromise = new Promise<never>((_, reject) => {
