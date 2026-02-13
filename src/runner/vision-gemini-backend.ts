@@ -126,7 +126,7 @@ export class GeminiVisionBackend implements VisionBackend {
 
   constructor(
     apiUrl: string = 'https://generativelanguage.googleapis.com/v1beta',
-    modelName: string = 'gemini-2.0-flash-exp',
+    modelName: string = 'gemini-2.0-flash',
     apiKey?: string
   ) {
     this.apiUrl = apiUrl.replace(/\/$/, '');
@@ -368,10 +368,10 @@ export class GeminiVisionBackend implements VisionBackend {
     let processedBuffer = screenshotBuffer;
     try {
       processedBuffer = await this.processImage(screenshotBuffer, {
-        resize: { width: 960 },
-        grayscale: false
+        resize: { width: 640 },
+        grayscale: true
       });
-      console.log(`   Image optimized: Resized (max 960px)`);
+      console.log(`   Image optimized: Resized (max 640) and grayscaled.`);
     } catch (e) {
       console.warn(`   Image optimization failed, using original. Error: ${e}`);
     }
@@ -383,16 +383,41 @@ export class GeminiVisionBackend implements VisionBackend {
     const optPng = PNG.sync.read(processedBuffer);
     const optWidth = optPng.width;
     const optHeight = optPng.height;
-    
-    const scaleX = imgWidth / optWidth;
-    const scaleY = imgHeight / optHeight;
 
     try {
-      const apiPrompt = options.prompt || `"${options.target}"`;
+      const targetElement = options.target || 'unknown element';
+      const userPrompt = options.prompt || `Find and locate: "${targetElement}"`;
+      const apiPrompt = `Analyze the provided screenshot of a Korean web interface and detect all clickable buttons and interactive UI elements containing Korean text.
+
+Task: ${userPrompt}
+
+Instructions:
+1. Identify all UI elements with Korean labels (e.g., "다음", "클릭하세요", "NEIS전송", "연장", "로그아웃").
+2. For each element found, provide the bounding box coordinates in the specified format.
+3. Coordinates must be in pixels relative to the image size (0,0 is top-left).
+4. Translate the label to English only for the 'Text' field description if necessary, but keep the original Korean text in quotes.
+5. If the specific target element is not found, return: NOT_FOUND
+
+Target Element to find: "${targetElement}"
+
+Format:
+Text: "[Original Korean Text]" at (x, y, width, height) confidence: [0.0-1.0]
+
+Response format examples:
+Text: "다음" at (100, 50, 60, 30) confidence: 0.95
+Text: "클릭하세요" at (180, 50, 80, 30) confidence: 0.92
+Text: "복습하기" at (120, 200, 100, 40) confidence: 0.88
+
+Your response:`;
+
+      console.log(`\n📝 [Gemini Vision] Request Prompt:\n${'─'.repeat(60)}\n${apiPrompt}\n${'─'.repeat(60)}`);
+
       const visionText = await this.callVisionAPI(processedBuffer, apiPrompt);
 
       const responsePath = path.join(artifactsDir, `gemini-${timestamp}-response.txt`);
       fs.writeFileSync(responsePath, visionText);
+
+      console.log(`\n📄 [Gemini Vision] Raw Response:\n${'─'.repeat(60)}\n${visionText}\n${'─'.repeat(60)}`);
 
       const parsedResults = this.parseVisionResults(visionText, optWidth, optHeight, options.target);
       
@@ -416,12 +441,15 @@ export class GeminiVisionBackend implements VisionBackend {
 
       const target = options.target;
       const finalResults: VisionExecutionResult[] = filteredResults.map(r => {
+        // Gemini returns coordinates in pixels relative to the original (pre-resized) image
+        // No additional scaling needed since we already parsed pixel coordinates
         const globalBbox = {
-          x: r.bbox.x * scaleX,
-          y: r.bbox.y * scaleY,
-          width: r.bbox.width * scaleX,
-          height: r.bbox.height * scaleY
+          x: r.bbox.x,
+          y: r.bbox.y,
+          width: r.bbox.width,
+          height: r.bbox.height
         };
+        console.log(`   📐 Coordinate transform: parsed(${r.bbox.x.toFixed(0)}, ${r.bbox.y.toFixed(0)}) -> global(${globalBbox.x.toFixed(0)}, ${globalBbox.y.toFixed(0)}) [img: ${imgWidth}x${imgHeight}, opt: ${optWidth}x${optHeight}]`);
 
         if (target && r.text.toLowerCase().includes(target.toLowerCase())) {
           const isWholeScreen = globalBbox.width >= imgWidth * 0.9 && globalBbox.height >= imgHeight * 0.9;
@@ -500,7 +528,24 @@ export class GeminiVisionBackend implements VisionBackend {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 120000);
 
-    console.log(`[Gemini Vision] Sending request to ${modelUrl}`);
+    // Log full request details
+    const requestBodyForLog = {
+      ...requestBody,
+      contents: requestBody.contents.map(content => ({
+        ...content,
+        parts: content.parts.map(part => {
+          if ('inlineData' in part) {
+            return { ...part, inlineData: { ...part.inlineData, data: `[BASE64_IMAGE:${part.inlineData.data.length}chars]` } };
+          }
+          return part;
+        })
+      }))
+    };
+    console.log(`\n📤 [Gemini Vision] Full Request:\n${'─'.repeat(60)}`);
+    console.log(`URL: ${modelUrl}`);
+    console.log(`Body:\n${JSON.stringify(requestBodyForLog, null, 2)}`);
+    console.log(`${'─'.repeat(60)}`);
+    console.log(`[Gemini Vision] Image base64 size: ${base64Image.length} chars`);
 
     try {
       const response = await fetch(modelUrl, {
@@ -547,9 +592,23 @@ export class GeminiVisionBackend implements VisionBackend {
   private parseVisionResults(visionText: string, imgWidth: number, imgHeight: number, _targetText?: string): ParsedVisionResult[] {
     const results: ParsedVisionResult[] = [];
 
+    console.log(`\n🔍 [Gemini Vision] Parsing vision text (image: ${imgWidth}x${imgHeight}):`);
+    console.log(`   Text length: ${visionText.length} chars`);
+    console.log(`   First 200 chars: "${visionText.substring(0, 200).replace(/\n/g, '\\n')}"`);
+
+    // Check for NOT_FOUND response
+    if (visionText.trim().toUpperCase().includes('NOT_FOUND') || 
+        visionText.trim().toLowerCase().includes('not found') ||
+        visionText.trim().toLowerCase().includes('cannot find') ||
+        visionText.trim().toLowerCase().includes('does not exist')) {
+      console.log(`   ⚠️ Element not found in response`);
+      return results;
+    }
+
     // Try to parse as JSON first
     try {
       const jsonData = JSON.parse(visionText);
+      console.log(`   ✅ Parsed as JSON`);
       const items = Array.isArray(jsonData) ? jsonData : [jsonData];
       
       items.forEach((item: any) => {
@@ -566,19 +625,23 @@ export class GeminiVisionBackend implements VisionBackend {
               });
         }
       });
-      if (results.length > 0) return results;
-    } catch {
-      // Not JSON, parse as text
+      if (results.length > 0) {
+        console.log(`   ✅ Found ${results.length} elements from JSON`);
+        return results;
+      }
+    } catch (e) {
+      console.log(`   ℹ️ Not valid JSON, parsing as text...`);
     }
 
     // Parse various coordinate formats
     const lines = visionText.split('\n');
+    console.log(`   ℹ️ Split into ${lines.length} lines`);
     
     // Format: text followed by 4 numbers (x1, y1, x2, y2)
     const coordPattern = /^.*?"?([^"\d][^"]*?)"?\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)$/;
     
     // Standard format with bbox
-    const standardPattern = /Text:\s*"?([^"]+)"?.*?(?:at|@)\s*\(?([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)\)?.*?confidence[:\s]+([\d.]+)/i;
+    const standardPattern = /Text:\s*"?([^"]+)"?.*?(?:at|@)\s*\(?([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)\)?.*?confidence[:,\s]+([\d.]+)/i;
 
     for (const line of lines) {
       const trimmedLine = line.trim();
@@ -586,6 +649,7 @@ export class GeminiVisionBackend implements VisionBackend {
 
       const coordMatch = trimmedLine.match(coordPattern);
       if (coordMatch) {
+        console.log(`   ✅ Matched coordPattern: "${trimmedLine.substring(0, 80)}"`);
         const [, textMatch, x1, y1, x2, y2] = coordMatch;
         if (textMatch && x1 && y1 && x2 && y2) {
           let cleanText = textMatch.trim();
@@ -615,6 +679,7 @@ export class GeminiVisionBackend implements VisionBackend {
 
       const standardMatch = trimmedLine.match(standardPattern);
       if (standardMatch) {
+        console.log(`   ✅ Matched standardPattern: "${trimmedLine.substring(0, 80)}"`);
         const [, textMatch, x, y, width, height, confidence] = standardMatch;
         if (textMatch && x && y && width && height && confidence) {
           let bboxX = parseFloat(x);
@@ -643,14 +708,17 @@ export class GeminiVisionBackend implements VisionBackend {
       }
     }
 
-    console.log(`   Parsed ${results.length} elements from OCR text`);
+    console.log(`   ✅ Parsed ${results.length} elements from OCR text`);
     if (results.length > 0) {
       results.forEach((r, i) => {
-        console.log(`     [${i}] "${r.text}" at (${r.bbox.x.toFixed(0)}, ${r.bbox.y.toFixed(0)}, ${(r.bbox.x + r.bbox.width).toFixed(0)}, ${(r.bbox.y + r.bbox.height).toFixed(0)})`);
+        console.log(`     [${i}] "${r.text}" at (${r.bbox.x.toFixed(0)}, ${r.bbox.y.toFixed(0)}, ${(r.bbox.x + r.bbox.width).toFixed(0)}, ${(r.bbox.y + r.bbox.height).toFixed(0)}) confidence: ${r.confidence.toFixed(2)}`);
       });
+    } else if (visionText.trim()) {
+      console.log(`   ⚠️ No elements parsed. Raw text preview: "${visionText.substring(0, 100).replace(/\n/g, '\\n')}"`);
     }
 
     if (results.length === 0 && visionText.trim()) {
+      console.log(`   📝 Using fallback: treating entire response as single element`);
       results.push({
         text: visionText.trim(),
         bbox: { x: 0, y: 0, width: imgWidth, height: imgHeight },

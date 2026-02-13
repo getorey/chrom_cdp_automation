@@ -114,7 +114,9 @@ npm run dev
 npm install -g pkg
 
 # Build Windows executable
-npm run pkg
+npm run pkg     # ext 생성
+npm run package # zip 생성
+npm run build-and-package     # 한번에 실행
 
 # Build all platforms (Windows, macOS, Linux)
 npm run pkg:all
