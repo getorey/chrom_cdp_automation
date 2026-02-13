@@ -213,8 +213,8 @@ const flowSchema = {
     },
     vision_backend: {
       type: 'string',
-      enum: ['som', 'omniparser', 'openai'],
-      description: 'Vision backend: "som", "omniparser", or "openai" (optional)',
+      enum: ['som', 'omniparser', 'openai', 'gemini'],
+      description: 'Vision backend: "som", "omniparser", "openai", or "gemini" (optional)',
     },
     vision_api_url: {
       type: 'string',

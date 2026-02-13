@@ -36,6 +36,7 @@ export enum VisionBackendType {
   SoM = 'som',
   OmniParser = 'omniparser',
   OpenAI = 'openai',
+  Gemini = 'gemini',
 }
 
 export interface VisionBackend {

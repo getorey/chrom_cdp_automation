@@ -5,13 +5,14 @@ import { VisionBackend, VisionFallbackError, VisionFallbackErrorType, captureScr
 import { SoMBackend } from './vision-som-backend.js';
 import { OmniParserBackend } from './vision-omniparser-backend.js';
 import { OpenAIVisionBackend } from './vision-openai-backend.js';
+import { GeminiVisionBackend } from './vision-gemini-backend.js';
 import { findTemplate, loadTemplateImage, loadTemplateFromBase64 } from './template-matcher-no-sharp.js';
 import { PNG } from 'pngjs';
 
 export class StepHandler {
   private visionBackend: VisionBackend | undefined;
   private globalVisionFallbackEnabled = false;
-  private globalVisionBackendType: 'som' | 'omniparser' | 'openai' = 'som';
+  private globalVisionBackendType: 'som' | 'omniparser' | 'openai' | 'gemini' = 'som';
   private visionApiUrl: string | undefined;
   private visionModelName: string | undefined;
   private visionMaxTokens: number | undefined;
@@ -64,6 +65,12 @@ export class StepHandler {
         this.visionBackend = new OmniParserBackend(this.visionApiUrl);
       } else if (this.globalVisionBackendType === 'openai') {
         const backend = new OpenAIVisionBackend(this.visionApiUrl, this.visionModelName, this.visionApiKey);
+        if (this.visionMaxTokens) {
+          backend.setMaxTokens(this.visionMaxTokens);
+        }
+        this.visionBackend = backend;
+      } else if (this.globalVisionBackendType === 'gemini') {
+        const backend = new GeminiVisionBackend(this.visionApiUrl, this.visionModelName, this.visionApiKey);
         if (this.visionMaxTokens) {
           backend.setMaxTokens(this.visionMaxTokens);
         }
