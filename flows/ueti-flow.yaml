@@ -19,18 +19,37 @@ steps:
     timeout: 1000
 
 
-  # Step 1: Navigate to Wikipedia homepage
-  # Action: navigate - Opens the specified URL in the browser
-  # Target: Full URL to navigate to
   - step_no: 2
-    action: click
-    target: "a#non-existent-link-for-openai-test"
-    description: Click non-existent link to trigger OpenAI Vision fallback
-    vision_fallback: true
-    vision_target: "다음"
-    vision_crop:
-      left: 0
-      top: 0
-      right: 0
-      bottom: 0
-    timeout: 100000
+    action: loop
+    target: "loop-container"
+    description: Load more items 3 times (click + wait)
+    repeat: 10000
+    loop_steps:
+
+      - action: click
+        target: "a#non-existent-link-for-openai-test"
+        description: Click non-existent link to trigger OpenAI Vision fallback
+        vision_fallback: true
+        skip_on_change: true  # Skip vision fallback if screen changed - only call LLM when screen is unchanged
+        vision_target: "다음"
+        vision_crop:
+          left: 20
+          top: 10
+          right: 0
+          bottom: 10
+
+      - action: click
+        target: "a#non-existent-link-for-openai-test"
+        description: Click non-existent link to trigger OpenAI Vision fallback
+        vision_fallback: true
+        skip_on_change: true  # Skip vision fallback if screen changed - only call LLM when screen is unchanged
+        vision_target: "클릭하세요"
+        vision_crop:
+          left: 20
+          top: 10
+          right: 0
+          bottom: 10
+
+      - action: wait
+        target: "60000"
+        description: Wait 60 second for items to load

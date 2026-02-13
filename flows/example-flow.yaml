@@ -163,3 +163,26 @@ steps:
     action: wait
     target: "1000"
     description: Wait 1 second after coordinate click
+
+
+
+
+
+
+
+#steps:
+#  - action: click
+#    target: "button#open-login-popup"  # 메인 창에서 팝업 열기
+#  
+#  - action: wait_for_popup
+#    timeout: 3000                      # 팝업 감지 및 자동 전환
+#  
+#  - action: type
+#    target: "input#email"              # ✅ 팝업창에서 입력
+#    value: "user@example.com"
+#  
+#  - action: click
+#    target: "button#submit"            # ✅ 팝업창에서 클릭
+#  
+#  - action: close_tab
+#    return_to_previous: true           # 원래 창으로 복귀
