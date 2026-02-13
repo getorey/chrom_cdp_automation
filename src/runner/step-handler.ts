@@ -194,7 +194,7 @@ export class StepHandler {
     }
   }
 
-  async execute(step: Step, cdpConnector: CDPConnector): Promise<{ success: boolean; usedVision: boolean; visionConfidence?: number; visionError?: string }> {
+  async execute(step: Step, cdpConnector: CDPConnector, skipVisionFallback: boolean = false): Promise<{ success: boolean; usedVision: boolean; visionConfidence?: number; visionError?: string }> {
     await this.initializeVisionBackend(step);
     this.page = cdpConnector.getPage();
 
@@ -208,6 +208,9 @@ export class StepHandler {
         try {
           await page.locator(step.target).click();
         } catch (error) {
+          if (skipVisionFallback) {
+            throw error;
+          }
           const result = await this.executeWithVisionFallback(step, error as Error);
           if (result.usedVision) {
             return result;
@@ -222,6 +225,9 @@ export class StepHandler {
         try {
           await page.locator(step.target).fill(step.value);
         } catch (error) {
+          if (skipVisionFallback) {
+            throw error;
+          }
           const result = await this.executeWithVisionFallback(step, error as Error);
           if (result.usedVision) {
             return result;
@@ -239,6 +245,9 @@ export class StepHandler {
         try {
           await page.selectOption(step.target, step.value);
         } catch (error) {
+          if (skipVisionFallback) {
+            throw error;
+          }
           const result = await this.executeWithVisionFallback(step, error as Error);
           if (result.usedVision) {
             return result;

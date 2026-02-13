@@ -81,6 +81,10 @@ const stepSchema = {
       type: 'boolean',
       description: 'Continue to next repeat iteration on error (optional, default: false)',
     },
+    skip_on_change: {
+      type: 'boolean',
+      description: 'Skip vision fallback if screen changed from previous iteration - only call LLM when screen is unchanged (optional, default: false)',
+    },
     loop_steps: {
       type: 'array',
       description: 'Sub-steps to execute in a loop (for loop action only)',
@@ -162,6 +166,10 @@ enum: ['navigate', 'click', 'click_at', 'click_template', 'type', 'wait', 'selec
           continue_on_error: {
             type: 'boolean',
             description: 'Continue to next repeat iteration on error (optional, default: false)',
+          },
+          skip_on_change: {
+            type: 'boolean',
+            description: 'Skip vision fallback if screen changed from previous iteration - only call LLM when screen is unchanged (optional, default: false)',
           },
         },
       },

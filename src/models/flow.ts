@@ -37,6 +37,7 @@ export interface Step {
   vision_crop?: VisionCrop;
   repeat?: number;
   continue_on_error?: boolean;
+  skip_on_change?: boolean;  // Skip vision fallback if screen changed from previous iteration (only call LLM when screen is unchanged)
   loop_steps?: Omit<Step, 'step_no'>[];
   // Tab/Popup management
   tab_index?: number;           // For switch_to_tab: 0-based index

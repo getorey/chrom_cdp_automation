@@ -5,6 +5,20 @@ import { CDPConnector } from './cdp-connector.js';
 import { StepHandler } from './step-handler.js';
 import { captureScreenshot, captureHtml } from './artifact-collector.js';
 
+/**
+ * Compare two screenshot buffers to check if they are identical.
+ * Uses both length check and content comparison for efficiency.
+ */
+function areScreenshotsIdentical(prevBuffer: Buffer | null, currentBuffer: Buffer): boolean {
+  if (!prevBuffer) {
+    return false;
+  }
+  if (prevBuffer.length !== currentBuffer.length) {
+    return false;
+  }
+  return prevBuffer.equals(currentBuffer);
+}
+
 export async function executeFlow(
   page: Page,
   flow: Flow,
@@ -33,10 +47,37 @@ export async function executeFlow(
     const action = step.action;
     const repeatCount = step.repeat ?? 1;
     const continueOnError = step.continue_on_error ?? false;
+    const skipOnChange = step.skip_on_change ?? false;
+
+    // Store previous screenshot for comparison when skip_on_change is enabled
+    let previousScreenshot: Buffer | null = null;
 
     for (let iteration = 1; iteration <= repeatCount; iteration++) {
       try {
-        const stepResult = await stepHandler.execute(step, cdpConnector);
+        // Determine if we should skip vision fallback based on screen changes
+        let shouldSkipVisionFallback = false;
+
+        if (skipOnChange && iteration > 1 && previousScreenshot) {
+          const currentScreenshot = await page.screenshot({ type: 'png' });
+          const isScreenChanged = !areScreenshotsIdentical(previousScreenshot, currentScreenshot);
+
+          if (isScreenChanged) {
+            // Screen changed: skip vision fallback (screen already progressed)
+            console.log(`[SkipOnChange] Step ${step.step_no} iteration ${iteration}: Screen changed, skipping vision fallback`);
+            shouldSkipVisionFallback = true;
+          } else {
+            // Screen unchanged: call vision fallback (need LLM to progress)
+            console.log(`[SkipOnChange] Step ${step.step_no} iteration ${iteration}: Screen unchanged, calling vision fallback`);
+          }
+          previousScreenshot = currentScreenshot;
+        }
+
+        const stepResult = await stepHandler.execute(step, cdpConnector, shouldSkipVisionFallback);
+
+        // Store screenshot after successful execution for next iteration comparison
+        if (skipOnChange) {
+          previousScreenshot = await page.screenshot({ type: 'png' });
+        }
 
         await captureScreenshot(page, run_id, step.step_no);
         await captureHtml(page, run_id, step.step_no);
